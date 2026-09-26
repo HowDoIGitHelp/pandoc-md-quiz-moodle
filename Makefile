@@ -5,7 +5,7 @@ ANSWERS := exampleAnswers.md
 all: build merge
 
 merge:
-	$(MERGEBIN) -a exampleAnswers.md -q exampleQuestions.md
+	$(MERGEBIN) -a $(QUESTIONS) -q $(ANSWERS)
 
 build:
 	cabal build
