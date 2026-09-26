@@ -1,6 +1,6 @@
 MERGEBIN := $(shell cabal list-bin merge-md)
-QUESTIONS := exampleQuestions.md
-ANSWERS := exampleAnswers.md
+QUESTIONS := examples/exampleQuestions.md
+ANSWERS := examples/exampleAnswers.md
 
 all: build merge
 
