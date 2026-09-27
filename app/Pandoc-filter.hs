@@ -12,10 +12,6 @@ data Question
     = MultipleChoice Text [Block] [Choice]
     | ShortAnswer Text [Block] [Block]
 
-toQuestions :: [Block] -> [Question]
-toQuestions ((OrderedList (start, prefix, delim) [items]) : rest) =
-    error "undefined"
-
 toHTMLFormatText :: [Inline] -> Text
 toHTMLFormatText ((Str text) : rest) = text <> (toHTMLFormatText rest)
 toHTMLFormatText ((Code _ text) : rest) =
@@ -44,6 +40,23 @@ toChoices :: Block -> [Choice]
 toChoices (OrderedList (start, prefix, delim) [items]) =
     map (\x -> Choice x) items
 
+isParagraph :: Block -> Bool
+isParagraph (Para _) = True
+isParagraph _ = False
+
+toMCQuestion :: [Block] -> Block -> Question
+toMCQuestion paraList list =
+    MultipleChoice (pack "Multiple Choice Question") paraList (toChoices list)
+toMCQuestion [] _ = error "Multiple Choice Question must start with question text"
+
+toQuestions :: [[Block]] -> [Question]
+toQuestions items = map go items
+    where
+        go q = case (span isParagraph q) of
+            (takenParas, (list@(OrderedList _ _) : [])) ->
+                (toMCQuestion takenParas list)
+            (takenParas, _) -> error "unsupported pattern"
+            _ -> error "unsupported pattern"
 
 main :: IO ()
 main = do
