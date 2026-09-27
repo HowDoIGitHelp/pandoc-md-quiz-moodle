@@ -12,37 +12,38 @@ data Question
     = MultipleChoice Text [Block] [Choice]
     | ShortAnswer Text [Block] [Block]
 
-asQuestions :: [Block] -> [Question]
-asQuestions ((OrderedList (start, prefix, delim) [items]) : rest) =
+toQuestions :: [Block] -> [Question]
+toQuestions ((OrderedList (start, prefix, delim) [items]) : rest) =
     error "undefined"
 
-asHTMLFormatText :: [Inline] -> Text
-asHTMLFormatText ((Str text) : rest) = text <> (asHTMLFormatText rest)
-asHTMLFormatText ((Code _ text) : rest) =
-    (pack "<code>") <> text <> (pack "</code>") <> (asHTMLFormatText rest)
-asHTMLFormatText ((Math InlineMath text) : rest) =
-    (pack "\\[") <> text <> (pack "\\]") <> (asHTMLFormatText rest)
-asHTMLFormatText ((Emph inlines) : rest) =
-    (pack "<em>") <> (asHTMLFormatText inlines) <> (pack "</em>") <> (asHTMLFormatText rest)
-asHTMLFormatText ((Strong inlines) : rest) =
-    (pack "<strong>") <> (asHTMLFormatText inlines) <> (pack "</strong>") <> (asHTMLFormatText rest)
-asHTMLFormatText (inline : rest) = error ("unsupported inline element" ++ (show inline))
-asHTMLFormatText [] = ""
+toHTMLFormatText :: [Inline] -> Text
+toHTMLFormatText ((Str text) : rest) = text <> (toHTMLFormatText rest)
+toHTMLFormatText ((Code _ text) : rest) =
+    (pack "<code>") <> text <> (pack "</code>") <> (toHTMLFormatText rest)
+toHTMLFormatText ((Math InlineMath text) : rest) =
+    (pack "\\[") <> text <> (pack "\\]") <> (toHTMLFormatText rest)
+toHTMLFormatText ((Emph inlines) : rest) =
+    (pack "<em>") <> (toHTMLFormatText inlines) <> (pack "</em>") <> (toHTMLFormatText rest)
+toHTMLFormatText ((Strong inlines) : rest) =
+    (pack "<strong>") <> (toHTMLFormatText inlines) <> (pack "</strong>") <> (toHTMLFormatText rest)
+toHTMLFormatText (inline : rest) = error ("unsupported inline element" ++ (show inline))
+toHTMLFormatText [] = ""
 
-asXMLCDATA :: Text -> Xml Elem
-asXMLCDATA text =
+toXMLCDATA :: Text -> Xml Elem
+toXMLCDATA text =
     xtextRaw ("<![CDATA[" <> (encodeUtf8Builder text) <> "]]>")
 
-asMoodleTextBlock :: Text -> [Inline] -> Xml Elem
-asMoodleTextBlock tagName inlines =
+toMoodleTextBlock :: Text -> [Inline] -> Xml Elem
+toMoodleTextBlock tagName inlines =
     xelem tagName
         ( xattr "format" "html"
             <#> ( xelem "text"
-                ((asXMLCDATA . asHTMLFormatText) inlines) ) )
+                ((toXMLCDATA . toHTMLFormatText) inlines) ) )
 
-asChoices :: Block -> [Choice]
-asChoices (OrderedList (start, prefix, delim) [items]) =
+toChoices :: Block -> [Choice]
+toChoices (OrderedList (start, prefix, delim) [items]) =
     map (\x -> Choice x) items
+
 
 main :: IO ()
 main = do
