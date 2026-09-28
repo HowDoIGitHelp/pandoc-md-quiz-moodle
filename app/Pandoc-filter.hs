@@ -3,16 +3,28 @@
 import Text.Pandoc.JSON
 import Text.Pandoc.Walk
 import Text.XML.Generator
-import Data.Text (Text, pack, intercalate, replace)
+import Data.Text (Text, pack, unpack, intercalate, replace, words)
 import Data.Text.Encoding (encodeUtf8Builder, decodeUtf8)
 import qualified Data.Text.Lazy as TL (toStrict, fromStrict, Text)
+import Text.Read (readMaybe)
+import Data.Char (chr)
+import Prelude hiding (words)
 
-data Choice = Choice [Block]
+data Choice = Choice Text
     deriving (Show)
 
 data Question
-    = MultipleChoice Text [Block] [Choice]
-    | ShortAnswer Text [Block] [Block]
+    = MultipleChoice Text Text [Choice]
+    | ShortAnswer Text Text Text
+    deriving (Show)
+
+data ChoiceFeedback
+    = ChoiceFeedback Float Text
+    deriving (Show)
+
+data AnswerKey
+    = MultipleChoiceKey Text Text [ChoiceFeedback]
+    | ShortAnswerKey [Text] [Float]
     deriving (Show)
 
 toHTMLFormatText :: [Inline] -> Text
@@ -67,7 +79,7 @@ toMoodleChoice (Choice blocks) =
         [ (xattr "fraction" "0")
         , (xattr "format" "html") ]
         <#> ( xelems
-            $ ((toTextElemCDATA . toHTMLFormatList) blocks)
+            $ toTextElemCDATA blocks
             : ( xelem "feedback" $ xattr "format" "html"
                 <#> toMoodleText "Incorrect" )
             : [] )
@@ -81,11 +93,11 @@ toMoodleQuestion (MultipleChoice title blocks choices) =
         $ (xelem "name" $ toMoodleText title)
         : ( xelem "questiontext"
             ( xattr "format" "html"
-                <#> (toTextElemCDATA . toHTMLFormatList) blocks ) )
+                <#> toTextElemCDATA blocks ) )
         : (toMoodleChoiceList choices) )
 
 toChoices :: Block -> [Choice]
-toChoices (OrderedList _ items) = map (\x -> Choice x) items
+toChoices (OrderedList _ items) = map (\x -> Choice (toHTMLFormatList x)) items
 toChoices b = error ("unable to parse choices " ++ (show b))
 
 isParagraph :: Block -> Bool
@@ -94,7 +106,7 @@ isParagraph _ = False
 
 toMCQuestion :: [Block] -> Block -> Question
 toMCQuestion paraList list =
-    MultipleChoice (pack "Multiple Choice Question") paraList (toChoices list)
+    MultipleChoice (pack "Multiple Choice Question") (toHTMLFormatList paraList) (toChoices list)
 toMCQuestion [] _ = error "Multiple Choice Question must start with question text"
 
 toQuestions :: [[Block]] -> [Question]
@@ -125,6 +137,43 @@ moodleXMLFilter (Pandoc meta blocks) = Pandoc (Meta mempty) [Plain [Str flattene
         renderedXML = xrender (doc defaultDocInfo (xelem "quiz" (xelems moodleQuestions)))
         flattenedXMLText= replace (pack "\n>") (pack ">") (decodeUtf8 renderedXML)
 
+toFeedback :: Bool -> [Block] -> ChoiceFeedback
+toFeedback _ ((Para ((Emph [Str score]):Space:rest1)) : rest2) =
+    ChoiceFeedback feedbackScore (toHTMLFormatList ((Para rest1):rest2))
+    where
+        feedbackScore = case ((readMaybe . unpack $ score) :: Maybe Float) of
+            Just float -> float
+            Nothing -> 0.0
+
+toFeedback True feedback =
+    ChoiceFeedback 1.0 (toHTMLFormatList feedback)
+toFeedback False feedback =
+    ChoiceFeedback 0.0 (toHTMLFormatList feedback)
+
+toFeedbackList :: [Bool] -> [[Block]] -> [ChoiceFeedback]
+toFeedbackList answers choicesFeedback =
+    zipWith toFeedback answers choicesFeedback
+
+toMCAnswerKey :: [Block] -> AnswerKey
+toMCAnswerKey ((Para [Str answer]) : rest) =
+    case (break isOrderedList rest) of
+        (feedback, []) ->
+            MultipleChoiceKey answer (toHTMLFormatList feedback) []
+        (feedback, [OrderedList _ items]) ->
+            MultipleChoiceKey answer (toHTMLFormatList feedback) (toFeedbackList answersBool items)
+        (feedback, ((OrderedList _ items):extraFeedback)) ->
+            MultipleChoiceKey answer (toHTMLFormatList (feedback ++ extraFeedback)) (toFeedbackList answersBool items)
+        _ -> error "unable to parse answer key"
+    where
+        answersClean = replace (pack ",") (pack " ") answer
+        answersList = words answersClean
+        bools = map (\choice -> (elem (pack [chr choice]) answersList)) [122..97]
+        answersBool = reverse (dropWhile not bools)
+toMCAnswerKey _ = error "answer key must start with the answer"
+
+
+toAnswerKeyList :: Block -> [AnswerKey]
+toAnswerKeyList (OrderedList _ items) = map toMCAnswerKey items
 
 main :: IO ()
 main = toJSONFilter moodleXMLFilter

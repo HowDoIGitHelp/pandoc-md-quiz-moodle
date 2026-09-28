@@ -56,10 +56,10 @@ merge file1 file2 = do
     contents2 <- BS.readFile file2
     let (front1, md1) = case FM.parseYamlFrontmatter contents1 of
             FM.Done md front -> (front :: Value, md)
-            _ -> error "could not parse markdown"
+            _ -> error "could not parse questions markdown"
     let (front2, md2) = case FM.parseYamlFrontmatter contents2 of
             FM.Done md front -> (front :: Value, md)
-            _ -> error "could not parse markdown"
+            _ -> error "could not parse answers markdown"
     let wrapper1 = singleton (fromString "questions") front1
     let wrapper2 = singleton (fromString "answers") front2
     let unifiedYaml = union wrapper1 wrapper2
