@@ -135,27 +135,33 @@ moodleXMLFilter (Pandoc meta blocks) = Pandoc (Meta mempty) [Plain [Str flattene
         questions = toQuestions items
         moodleQuestions = map toMoodleQuestion questions
         renderedXML = xrender (doc defaultDocInfo (xelem "quiz" (xelems moodleQuestions)))
-        flattenedXMLText= replace (pack "\n>") (pack ">") (decodeUtf8 renderedXML)
+        flattenedXMLText = replace (pack "\n>") (pack ">") (decodeUtf8 renderedXML)
 
-toFeedback :: Bool -> [Block] -> ChoiceFeedback
-toFeedback _ ((Para ((Emph [Str score]):Space:rest1)) : rest2) =
-    ChoiceFeedback feedbackScore (toHTMLFormatList ((Para rest1):rest2))
+choiceFeedbackHelper :: Text -> [Block] -> ChoiceFeedback
+choiceFeedbackHelper score feedback =
+    ChoiceFeedback feedbackScore (toHTMLFormatList feedback)
     where
         feedbackScore = case ((readMaybe . unpack $ score) :: Maybe Float) of
             Just float -> float
             Nothing -> 0.0
 
+toFeedback :: Bool -> [Block] -> ChoiceFeedback
+toFeedback _ ((Para ((Emph [Str score]):Space:rest1)) : rest2) =
+    choiceFeedbackHelper score ((Para rest1):rest2)
+toFeedback _ [Plain ((Emph [Str score]):Space:rest)] =
+    choiceFeedbackHelper score [Plain rest]
 toFeedback True feedback =
     ChoiceFeedback 1.0 (toHTMLFormatList feedback)
 toFeedback False feedback =
     ChoiceFeedback 0.0 (toHTMLFormatList feedback)
+toFeedback _ _ = error "unable to parse choice feedback"
 
 toFeedbackList :: [Bool] -> [[Block]] -> [ChoiceFeedback]
 toFeedbackList answers choicesFeedback =
     zipWith toFeedback answers choicesFeedback
 
-toMCAnswerKey :: [Block] -> AnswerKey
-toMCAnswerKey ((Para [Str answer]) : rest) =
+toMCAnswerKeyHelper :: Text -> [Block] -> AnswerKey
+toMCAnswerKeyHelper answer rest =
     case (break isOrderedList rest) of
         (feedback, []) ->
             MultipleChoiceKey answer (toHTMLFormatList feedback) []
@@ -169,6 +175,12 @@ toMCAnswerKey ((Para [Str answer]) : rest) =
         answersList = words answersClean
         bools = map (\choice -> (elem (pack [chr choice]) answersList)) [122..97]
         answersBool = reverse (dropWhile not bools)
+
+toMCAnswerKey :: [Block] -> AnswerKey
+toMCAnswerKey ((Para [Str answer]) : rest) =
+    toMCAnswerKeyHelper answer rest
+toMCAnswerKey ((Plain [Str answer]) : rest) =
+    toMCAnswerKeyHelper answer rest
 toMCAnswerKey _ = error "answer key must start with the answer"
 
 
