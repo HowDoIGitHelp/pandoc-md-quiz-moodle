@@ -7,6 +7,7 @@ import Data.Text (Text, pack, unpack, intercalate, replace, words, uncons, null)
 import Data.Text.Encoding (encodeUtf8Builder, decodeUtf8)
 import qualified Data.Text.Lazy as TL (toStrict, fromStrict, Text)
 import Text.Read (readMaybe)
+import Debug.Trace (trace)
 import Data.Char (chr, isLower)
 import Prelude hiding (words, null)
 
@@ -44,9 +45,27 @@ toHTMLFormatText ((Strong inlines) : rest) =
 toHTMLFormatText (inline : rest) = error ("unsupported inline element " ++ (show inline))
 toHTMLFormatText [] = ""
 
+toHTMLTableCell :: Cell -> Text
+toHTMLTableCell (Cell _ _ _ _ cell) = (pack "<td>") <> (toHTMLFormatList cell) <> (pack "</td>")
+
+toHTMLTableRow :: Row -> Text
+toHTMLTableRow (Row _ cells) =
+    (pack "<tr>") <> (intercalate (pack " ") (map toHTMLTableCell cells)) <> (pack "</tr>")
+
+toHTMLTableHeadCell :: Cell -> Text
+toHTMLTableHeadCell (Cell _ _ _ _ cell) = (pack "<th>") <> (toHTMLFormatList cell) <> (pack "</th>")
+
+toHTMLTableHead :: TableHead -> Text
+toHTMLTableHead (TableHead _ [(Row _ cells)]) =
+    (pack "<thead><tr>") <> (intercalate (pack " ") (map toHTMLTableHeadCell cells)) <> (pack "</tr></thead>")
+
+toHTMLTableBody :: TableBody -> Text
+toHTMLTableBody (TableBody _ _ _ rows) =
+    (pack "<tbody>") <> (intercalate (pack "\n") (map toHTMLTableRow rows)) <> (pack "</tbody>")
+
 toHTMLFormat :: Block -> Text
 toHTMLFormat (Para inlines) = (pack "<p>") <> (toHTMLFormatText inlines) <> (pack "</p>")
-toHTMLFormat (Plain inlines) = (pack "<p>") <> (toHTMLFormatText inlines) <> (pack "</p>")
+toHTMLFormat (Plain inlines) = toHTMLFormatText inlines
 toHTMLFormat (CodeBlock _ text) = (pack "<pre><code>") <> text <> (pack "</code></pre>")
 toHTMLFormat (BlockQuote blocks) = (pack "<quote>") <> (toHTMLFormatList blocks) <> (pack "</quote>")
 toHTMLFormat (Para [Math DisplayMath text]) = (pack "\\[") <> text <> (pack "\\]")
@@ -54,6 +73,9 @@ toHTMLFormat (BulletList items) = (pack "<ul>") <> htmlItemsBlock <> (pack "</ul
     where
         htmlItems = map (\li -> (pack "<li>") <> (toHTMLFormatList li) <> (pack "</li>")) items
         htmlItemsBlock = intercalate (pack "\n") htmlItems
+toHTMLFormat (Table _ _ _ head [body] _) =
+    (pack "<table>") <> (toHTMLTableHead head) <> (pack "\n")
+        <> (toHTMLTableBody body) <> (pack "</table>")
 toHTMLFormat block = error ("unsupported block" ++ (show block))
 
 toHTMLFormatList :: [Block] -> Text
@@ -78,32 +100,49 @@ toMoodleTextBlock tagName inlines children =
 toMoodleText :: Text -> Xml Elem
 toMoodleText text = (xelem "text" $ xtext text)
 
-toMoodleChoice :: Choice -> Xml Elem
-toMoodleChoice (Choice blocks) =
+toMoodleChoice :: Choice -> ChoiceFeedback -> Xml Elem
+toMoodleChoice (Choice blocks) (ChoiceFeedback score feedback)=
     xelem "answer" $ xattrs
-        [ (xattr "fraction" "0")
+        [ (xattr "fraction" ((pack . show) score))
         , (xattr "format" "html") ]
         <#> ( xelems
             $ toTextElemCDATA blocks
             : ( xelem "feedback" $ xattr "format" "html"
-                <#> toMoodleText "Incorrect" )
+                <#> toTextElemCDATA feedback )
             : [] )
 
-toMoodleChoiceList :: [Choice] -> [Xml Elem]
-toMoodleChoiceList choices = map toMoodleChoice choices
+toMoodleChoiceList :: [Choice] -> [ChoiceFeedback] -> [Xml Elem]
+toMoodleChoiceList choices cfs = zipWith toMoodleChoice choices cfs
+
+padEnd :: Int -> a -> [a] -> [a]
+padEnd n padding list = list ++ (replicate (n - length list) padding)
 
 toMoodleQuestion :: Question -> AnswerKey -> Xml Elem
 toMoodleQuestion (MultipleChoice title questionText choices)
     (MultipleChoiceKey key generalFeedback choicesFeedback) =
-    xelem "question" $ xattr "type" "multichoice" <#> ( xelems
+    ( xelem "question" $ xattr "type" "multichoice" <#> ( xelems
         $ (xelem "name" $ toMoodleText title)
         : ( xelem "questiontext"
             ( xattr "format" "html"
                 <#> toTextElemCDATA questionText ) )
         : ( xelem "generalfeedback"
             $ xattr "format" "html"
-            <#> toTextElemCDATA generalFeedback )
-        : (toMoodleChoiceList choices) )
+            <#> toTextElemCDATA generalFeedback' )
+        : (toMoodleChoiceList choices choicesFeedback') ) )
+    where
+        nChoices = (length choices)
+        defaultFeedback = toFeedbackList (padEnd nChoices False (parseAnswers key)) []
+        (generalFeedback', choicesFeedback') = case (length choices) == (length choicesFeedback) of
+            True ->
+                (generalFeedback, choicesFeedback)
+            False ->
+                ( generalFeedback <> ". \n" <> groupedChoiceFeedback choicesFeedback
+                , defaultFeedback )
+
+groupedChoiceFeedback :: [ChoiceFeedback] -> Text
+groupedChoiceFeedback cfs = intercalate (pack ", \n") (map go cfs)
+    where
+        go (ChoiceFeedback score feedback) = feedback
 
 toChoices :: Block -> [Choice]
 toChoices (OrderedList _ items) = map (\x -> Choice (toHTMLFormatList x)) items
@@ -136,7 +175,7 @@ choiceFeedbackHelper score feedback =
     ChoiceFeedback feedbackScore (toHTMLFormatList feedback)
     where
         feedbackScore = case ((readMaybe . unpack $ score) :: Maybe Float) of
-            Just float -> float
+            Just float -> float * 100.0
             Nothing -> 0.0
 
 toFeedback :: Bool -> [Block] -> ChoiceFeedback
@@ -145,20 +184,19 @@ toFeedback _ ((Para ((Emph [Str score]):Space:rest1)) : rest2) =
 toFeedback _ [Plain ((Emph [Str score]):Space:rest)] =
     choiceFeedbackHelper score [Plain rest]
 toFeedback True feedback =
-    ChoiceFeedback 1.0 (toHTMLFormatList feedback)
+    ChoiceFeedback 100 (toHTMLFormatList feedback)
 toFeedback False feedback =
-    ChoiceFeedback 0.0 (toHTMLFormatList feedback)
+    ChoiceFeedback 0 (toHTMLFormatList feedback)
 toFeedback _ _ = error "unable to parse choice feedback"
 
 toFeedbackList :: [Bool] -> [[Block]] -> [ChoiceFeedback]
+toFeedbackList answers [] =
+    zipWith toFeedback answers (map defaultFeedback answers)
 toFeedbackList answers choicesFeedback =
-    zipWith toFeedback answers choicesFeedback
-toFeedbaclList answers [] =
-    zipWith toFeedback answers defaultFeedback
-    where
-        defaultFeedback = map go answers
-        go True = [Plain [Str "Correct"]]
-        go False = [Plain [Str "Incorrect"]]
+    zipWith toFeedback (padEnd (length choicesFeedback) False answers) choicesFeedback
+
+defaultFeedback True = [Plain [Str "Correct"]]
+defaultFeedback False = [Plain [Str "Incorrect"]]
 
 isValidKey :: Text -> Bool
 isValidKey text =
@@ -166,21 +204,24 @@ isValidKey text =
         Just (c,_) -> isLower c
         Nothing -> False
 
+parseAnswers :: Text -> [Bool]
+parseAnswers answer = answersBool
+    where
+        answersClean = replace (pack ",") (pack " ") answer
+        answersList = words answersClean
+        bools = map (\choice -> (elem (pack [chr choice]) answersList)) [122,121..97]
+        answersBool = reverse (dropWhile not bools)
+
 toMCAnswerKeyHelper :: Text -> [Block] -> AnswerKey
 toMCAnswerKeyHelper answer rest =
     case (break isOrderedList rest) of
         (feedback, []) ->
             MultipleChoiceKey answer (toHTMLFormatList feedback) []
         (feedback, [OrderedList _ items]) ->
-            MultipleChoiceKey answer (toHTMLFormatList feedback) (toFeedbackList answersBool items)
+            MultipleChoiceKey answer (toHTMLFormatList feedback) (toFeedbackList (parseAnswers answer) items)
         (feedback, ((OrderedList _ items):extraFeedback)) ->
-            MultipleChoiceKey answer (toHTMLFormatList (feedback ++ extraFeedback)) (toFeedbackList answersBool items)
+            MultipleChoiceKey answer (toHTMLFormatList (feedback ++ extraFeedback)) (toFeedbackList (parseAnswers answer) items)
         _ -> error "unable to parse answer key"
-    where
-        answersClean = replace (pack ",") (pack " ") answer
-        answersList = words answersClean
-        bools = map (\choice -> (elem (pack [chr choice]) answersList)) [122..97]
-        answersBool = reverse (dropWhile not bools)
 
 toMCAnswerKey :: [Block] -> AnswerKey
 toMCAnswerKey ((Para [Str answer]) : rest) | isValidKey answer =
@@ -202,11 +243,12 @@ moodleXMLFilter :: Pandoc -> Pandoc
 moodleXMLFilter (Pandoc meta blocks) = Pandoc (Meta mempty) [Plain [Str flattenedXMLText]]
     where
         (olist1 : validRest) = case (break isOrderedList blocks) of
-            (_, rest@(_:_)) -> rest
             (_, []) -> error "missing questions list"
+            (_, rest@(_:_)) -> rest
         olist2 = case (break isOrderedList validRest) of
-            (_, (x:_)) -> x
-            (_, []) -> error "missing answers list"
+            (_, []) -> error "cannot parse answer key"
+            (_, (x:[])) -> x
+            (_, (x:rest)) -> error "there is extra content at the end of the answer key"
         (OrderedList _ questionItems) = olist1
         (OrderedList _ answerItems) = olist2
         questions = toQuestions questionItems

@@ -4,9 +4,9 @@ QUESTIONS := examples/exampleQuestions.md
 ANSWERS := examples/exampleAnswers.md
 OUTPUT := examples/output.xml
 
-all: build merge
+all: build convert
 
-merge:
+convert:
 	> $(OUTPUT)
 	$(MERGEBIN) -q $(QUESTIONS) -a $(ANSWERS) | \
 		pandoc -t json | \
@@ -14,6 +14,9 @@ merge:
 		pandoc -f json \
 		-t plain | \
 		XMLLINT_INDENT="    " xmllint --format - --output $(OUTPUT)
+
+merge:
+	$(MERGEBIN) -q $(QUESTIONS) -a $(ANSWERS)
 
 build:
 	cabal build
