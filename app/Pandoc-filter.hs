@@ -3,12 +3,12 @@
 import Text.Pandoc.JSON
 import Text.Pandoc.Walk
 import Text.XML.Generator
-import Data.Text (Text, pack, unpack, intercalate, replace, words)
+import Data.Text (Text, pack, unpack, intercalate, replace, words, uncons, null)
 import Data.Text.Encoding (encodeUtf8Builder, decodeUtf8)
 import qualified Data.Text.Lazy as TL (toStrict, fromStrict, Text)
 import Text.Read (readMaybe)
-import Data.Char (chr)
-import Prelude hiding (words)
+import Data.Char (chr, isLower)
+import Prelude hiding (words, null)
 
 data Choice = Choice Text
     deriving (Show)
@@ -50,7 +50,11 @@ toHTMLFormat (Plain inlines) = (pack "<p>") <> (toHTMLFormatText inlines) <> (pa
 toHTMLFormat (CodeBlock _ text) = (pack "<pre><code>") <> text <> (pack "</code></pre>")
 toHTMLFormat (BlockQuote blocks) = (pack "<quote>") <> (toHTMLFormatList blocks) <> (pack "</quote>")
 toHTMLFormat (Para [Math DisplayMath text]) = (pack "\\[") <> text <> (pack "\\]")
-toHTMLFormat _ = error "unsupported block"
+toHTMLFormat (BulletList items) = (pack "<ul>") <> htmlItemsBlock <> (pack "</ul>")
+    where
+        htmlItems = map (\li -> (pack "<li>") <> (toHTMLFormatList li) <> (pack "</li>")) items
+        htmlItemsBlock = intercalate (pack "\n") htmlItems
+toHTMLFormat block = error ("unsupported block" ++ (show block))
 
 toHTMLFormatList :: [Block] -> Text
 toHTMLFormatList blocks = intercalate (pack "\n") (map toHTMLFormat blocks)
@@ -60,8 +64,9 @@ toTextElemCDATA text =
     xelem "text" $ toXMLCDATA text
 
 toXMLCDATA :: Text -> Xml Elem
-toXMLCDATA text =
-    xtextRaw ("<![CDATA[" <> (encodeUtf8Builder text) <> "]]>")
+toXMLCDATA text
+    | (null text) = xtextRaw " "
+    | otherwise = xtextRaw ("<![CDATA[" <> (encodeUtf8Builder text) <> "]]>")
 
 toMoodleTextBlock :: Text -> [Inline] -> [Xml Elem] -> Xml Elem
 toMoodleTextBlock tagName inlines children =
@@ -87,13 +92,17 @@ toMoodleChoice (Choice blocks) =
 toMoodleChoiceList :: [Choice] -> [Xml Elem]
 toMoodleChoiceList choices = map toMoodleChoice choices
 
-toMoodleQuestion :: Question -> Xml Elem
-toMoodleQuestion (MultipleChoice title blocks choices) =
+toMoodleQuestion :: Question -> AnswerKey -> Xml Elem
+toMoodleQuestion (MultipleChoice title questionText choices)
+    (MultipleChoiceKey key generalFeedback choicesFeedback) =
     xelem "question" $ xattr "type" "multichoice" <#> ( xelems
         $ (xelem "name" $ toMoodleText title)
         : ( xelem "questiontext"
             ( xattr "format" "html"
-                <#> toTextElemCDATA blocks ) )
+                <#> toTextElemCDATA questionText ) )
+        : ( xelem "generalfeedback"
+            $ xattr "format" "html"
+            <#> toTextElemCDATA generalFeedback )
         : (toMoodleChoiceList choices) )
 
 toChoices :: Block -> [Choice]
@@ -122,21 +131,6 @@ isOrderedList :: Block -> Bool
 isOrderedList (OrderedList _ _) = True
 isOrderedList _ = False
 
-moodleXMLFilter :: Pandoc -> Pandoc
-moodleXMLFilter (Pandoc meta blocks) = Pandoc (Meta mempty) [Plain [Str flattenedXMLText]]
-    where
-        (olist1 : validRest) = case (break isOrderedList blocks) of
-            (_, rest@(_:_)) -> rest
-            (_, []) -> error "missing questions list"
-        olist2 = case (break isOrderedList validRest) of
-            (_, (x:_)) -> x
-            (_, []) -> error "missing answers list"
-        (OrderedList _ items) = olist1
-        questions = toQuestions items
-        moodleQuestions = map toMoodleQuestion questions
-        renderedXML = xrender (doc defaultDocInfo (xelem "quiz" (xelems moodleQuestions)))
-        flattenedXMLText = replace (pack "\n>") (pack ">") (decodeUtf8 renderedXML)
-
 choiceFeedbackHelper :: Text -> [Block] -> ChoiceFeedback
 choiceFeedbackHelper score feedback =
     ChoiceFeedback feedbackScore (toHTMLFormatList feedback)
@@ -159,6 +153,18 @@ toFeedback _ _ = error "unable to parse choice feedback"
 toFeedbackList :: [Bool] -> [[Block]] -> [ChoiceFeedback]
 toFeedbackList answers choicesFeedback =
     zipWith toFeedback answers choicesFeedback
+toFeedbaclList answers [] =
+    zipWith toFeedback answers defaultFeedback
+    where
+        defaultFeedback = map go answers
+        go True = [Plain [Str "Correct"]]
+        go False = [Plain [Str "Incorrect"]]
+
+isValidKey :: Text -> Bool
+isValidKey text =
+    case (uncons text) of
+        Just (c,_) -> isLower c
+        Nothing -> False
 
 toMCAnswerKeyHelper :: Text -> [Block] -> AnswerKey
 toMCAnswerKeyHelper answer rest =
@@ -177,15 +183,37 @@ toMCAnswerKeyHelper answer rest =
         answersBool = reverse (dropWhile not bools)
 
 toMCAnswerKey :: [Block] -> AnswerKey
-toMCAnswerKey ((Para [Str answer]) : rest) =
+toMCAnswerKey ((Para [Str answer]) : rest) | isValidKey answer =
     toMCAnswerKeyHelper answer rest
-toMCAnswerKey ((Plain [Str answer]) : rest) =
+toMCAnswerKey ((Plain [Str answer]) : rest) | isValidKey answer =
     toMCAnswerKeyHelper answer rest
+toMCAnswerKey [Plain (Str answer : rest)] | isValidKey answer =
+    toMCAnswerKeyHelper answer [Plain rest]
+toMCAnswerKey [Plain ((Strong [Str answer]) : rest)] | isValidKey answer =
+    toMCAnswerKeyHelper answer [Plain rest]
+toMCAnswerKey [Plain ((Emph [Str answer]) : rest)] | isValidKey answer =
+    toMCAnswerKeyHelper answer [Plain rest]
 toMCAnswerKey _ = error "answer key must start with the answer"
-
 
 toAnswerKeyList :: Block -> [AnswerKey]
 toAnswerKeyList (OrderedList _ items) = map toMCAnswerKey items
+
+moodleXMLFilter :: Pandoc -> Pandoc
+moodleXMLFilter (Pandoc meta blocks) = Pandoc (Meta mempty) [Plain [Str flattenedXMLText]]
+    where
+        (olist1 : validRest) = case (break isOrderedList blocks) of
+            (_, rest@(_:_)) -> rest
+            (_, []) -> error "missing questions list"
+        olist2 = case (break isOrderedList validRest) of
+            (_, (x:_)) -> x
+            (_, []) -> error "missing answers list"
+        (OrderedList _ questionItems) = olist1
+        (OrderedList _ answerItems) = olist2
+        questions = toQuestions questionItems
+        answerKeys = toAnswerKeyList olist2
+        moodleQuestions = zipWith toMoodleQuestion questions answerKeys
+        renderedXML = xrender (doc defaultDocInfo (xelem "quiz" (xelems moodleQuestions)))
+        flattenedXMLText = replace (pack "\n>") (pack ">") (decodeUtf8 renderedXML)
 
 main :: IO ()
 main = toJSONFilter moodleXMLFilter
