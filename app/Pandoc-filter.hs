@@ -29,57 +29,57 @@ data AnswerKey
     deriving (Show)
 
 toHTMLFormatText :: [Inline] -> Text
-toHTMLFormatText (Space : rest) = (pack " ") <> (toHTMLFormatText rest)
-toHTMLFormatText (SoftBreak : rest) = (pack " ") <> (toHTMLFormatText rest)
+toHTMLFormatText (Space : rest) = " " <> (toHTMLFormatText rest)
+toHTMLFormatText (SoftBreak : rest) = " " <> (toHTMLFormatText rest)
 toHTMLFormatText ((Str text) : rest) = text <> (toHTMLFormatText rest)
 toHTMLFormatText ((Code _ text) : rest) =
-    (pack "<code>") <> text <> (pack "</code>") <> (toHTMLFormatText rest)
+    "<code>" <> text <> "</code>" <> (toHTMLFormatText rest)
 toHTMLFormatText ((Math InlineMath text) : rest) =
-    (pack "\\(") <> text <> (pack "\\)") <> (toHTMLFormatText rest)
+    "\\(" <> text <> (pack "\\)") <> (toHTMLFormatText rest)
 toHTMLFormatText ((Math DisplayMath text) : rest) =
-    (pack "\\[") <> text <> (pack "\\]") <> (toHTMLFormatText rest)
+    "\\[" <> text <> "\\]" <> (toHTMLFormatText rest)
 toHTMLFormatText ((Emph inlines) : rest) =
-    (pack "<em>") <> (toHTMLFormatText inlines) <> (pack "</em>") <> (toHTMLFormatText rest)
+    "<em>" <> (toHTMLFormatText inlines) <> "</em>" <> (toHTMLFormatText rest)
 toHTMLFormatText ((Strong inlines) : rest) =
-    (pack "<strong>") <> (toHTMLFormatText inlines) <> (pack "</strong>") <> (toHTMLFormatText rest)
+    "<strong>" <> (toHTMLFormatText inlines) <> "</strong>" <> (toHTMLFormatText rest)
 toHTMLFormatText (inline : rest) = error ("unsupported inline element " ++ (show inline))
 toHTMLFormatText [] = ""
 
 toHTMLTableCell :: Cell -> Text
-toHTMLTableCell (Cell _ _ _ _ cell) = (pack "<td>") <> (toHTMLFormatList cell) <> (pack "</td>")
+toHTMLTableCell (Cell _ _ _ _ cell) = "<td>" <> (toHTMLFormatList cell) <> "</td>"
 
 toHTMLTableRow :: Row -> Text
 toHTMLTableRow (Row _ cells) =
-    (pack "<tr>") <> (intercalate (pack " ") (map toHTMLTableCell cells)) <> (pack "</tr>")
+    "<tr>" <> (intercalate " " (map toHTMLTableCell cells)) <> "</tr>"
 
 toHTMLTableHeadCell :: Cell -> Text
-toHTMLTableHeadCell (Cell _ _ _ _ cell) = (pack "<th>") <> (toHTMLFormatList cell) <> (pack "</th>")
+toHTMLTableHeadCell (Cell _ _ _ _ cell) = "<th>" <> (toHTMLFormatList cell) <> "</th>"
 
 toHTMLTableHead :: TableHead -> Text
 toHTMLTableHead (TableHead _ [(Row _ cells)]) =
-    (pack "<thead><tr>") <> (intercalate (pack " ") (map toHTMLTableHeadCell cells)) <> (pack "</tr></thead>")
+    "<thead><tr>" <> (intercalate " " (map toHTMLTableHeadCell cells)) <> "</tr></thead>"
 
 toHTMLTableBody :: TableBody -> Text
 toHTMLTableBody (TableBody _ _ _ rows) =
-    (pack "<tbody>") <> (intercalate (pack "\n") (map toHTMLTableRow rows)) <> (pack "</tbody>")
+    "<tbody>" <> (intercalate "\n" (map toHTMLTableRow rows)) <> "</tbody>"
 
 toHTMLFormat :: Block -> Text
-toHTMLFormat (Para inlines) = (pack "<p>") <> (toHTMLFormatText inlines) <> (pack "</p>")
+toHTMLFormat (Para inlines) = "<p>" <> (toHTMLFormatText inlines) <> "</p>"
 toHTMLFormat (Plain inlines) = toHTMLFormatText inlines
-toHTMLFormat (CodeBlock _ text) = (pack "<pre><code>") <> text <> (pack "</code></pre>")
-toHTMLFormat (BlockQuote blocks) = (pack "<quote>") <> (toHTMLFormatList blocks) <> (pack "</quote>")
-toHTMLFormat (Para [Math DisplayMath text]) = (pack "\\[") <> text <> (pack "\\]")
-toHTMLFormat (BulletList items) = (pack "<ul>") <> htmlItemsBlock <> (pack "</ul>")
+toHTMLFormat (CodeBlock _ text) = "<pre><code>" <> text <> "</code></pre>"
+toHTMLFormat (BlockQuote blocks) = "<quote>" <> (toHTMLFormatList blocks) <> "</quote>"
+toHTMLFormat (Para [Math DisplayMath text]) = "\\[" <> text <> "\\]"
+toHTMLFormat (BulletList items) = "<ul>" <> htmlItemsBlock <> "</ul>"
     where
-        htmlItems = map (\li -> (pack "<li>") <> (toHTMLFormatList li) <> (pack "</li>")) items
-        htmlItemsBlock = intercalate (pack "\n") htmlItems
+        htmlItems = map (\li -> "<li>" <> (toHTMLFormatList li) <> "</li>") items
+        htmlItemsBlock = intercalate "\n" htmlItems
 toHTMLFormat (Table _ _ _ head [body] _) =
-    (pack "<table>") <> (toHTMLTableHead head) <> (pack "\n")
-        <> (toHTMLTableBody body) <> (pack "</table>")
+    "<table>" <> (toHTMLTableHead head) <> "\n"
+        <> (toHTMLTableBody body) <> "</table>"
 toHTMLFormat block = error ("unsupported block" ++ (show block))
 
 toHTMLFormatList :: [Block] -> Text
-toHTMLFormatList blocks = intercalate (pack "\n") (map toHTMLFormat blocks)
+toHTMLFormatList blocks = intercalate "\n" (map toHTMLFormat blocks)
 
 toTextElemCDATA :: Text -> Xml Elem
 toTextElemCDATA text =
@@ -136,13 +136,17 @@ toMoodleQuestion (MultipleChoice title questionText choices)
             True ->
                 (generalFeedback, choicesFeedback)
             False ->
-                ( generalFeedback <> ". \n" <> groupedChoiceFeedback choicesFeedback
+                ( intercalate (". \n") (filter (not . null) [generalFeedback, groupedChoiceFeedback choicesFeedback])
                 , defaultFeedback )
 
+isEmptyFeedback :: ChoiceFeedback -> Bool
+isEmptyFeedback (ChoiceFeedback _ feedback) = null feedback
+
 groupedChoiceFeedback :: [ChoiceFeedback] -> Text
-groupedChoiceFeedback cfs = intercalate (pack ", \n") (map go cfs)
+groupedChoiceFeedback cfs =
+    intercalate ", \n" (map go (filter (not . isEmptyFeedback) cfs))
     where
-        go (ChoiceFeedback score feedback) = feedback
+        go (ChoiceFeedback _ feedback) = feedback
 
 toChoices :: Block -> [Choice]
 toChoices (OrderedList _ items) = map (\x -> Choice (toHTMLFormatList x)) items
@@ -154,7 +158,7 @@ isParagraph _ = False
 
 toMCQuestion :: [Block] -> Block -> Question
 toMCQuestion paraList list =
-    MultipleChoice (pack "Multiple Choice Question") (toHTMLFormatList paraList) (toChoices list)
+    MultipleChoice "Multiple Choice Question" (toHTMLFormatList paraList) (toChoices list)
 toMCQuestion [] _ = error "Multiple Choice Question must start with question text"
 
 toQuestions :: [[Block]] -> [Question]
@@ -207,7 +211,7 @@ isValidKey text =
 parseAnswers :: Text -> [Bool]
 parseAnswers answer = answersBool
     where
-        answersClean = replace (pack ",") (pack " ") answer
+        answersClean = replace "," " " answer
         answersList = words answersClean
         bools = map (\choice -> (elem (pack [chr choice]) answersList)) [122,121..97]
         answersBool = reverse (dropWhile not bools)
@@ -255,7 +259,7 @@ moodleXMLFilter (Pandoc meta blocks) = Pandoc (Meta mempty) [Plain [Str flattene
         answerKeys = toAnswerKeyList olist2
         moodleQuestions = zipWith toMoodleQuestion questions answerKeys
         renderedXML = xrender (doc defaultDocInfo (xelem "quiz" (xelems moodleQuestions)))
-        flattenedXMLText = replace (pack "\n>") (pack ">") (decodeUtf8 renderedXML)
+        flattenedXMLText = replace "\n>" ">" (decodeUtf8 renderedXML)
 
 main :: IO ()
 main = toJSONFilter moodleXMLFilter
