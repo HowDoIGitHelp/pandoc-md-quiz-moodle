@@ -22,13 +22,13 @@ data Question
     | ShortAnswer Text Text
     deriving (Show)
 
-data ChoiceFeedback
-    = ChoiceFeedback Float Text
+data ScoredFeedback
+    = ScoredFeedback Float Text
     deriving (Show)
 
 data AnswerKey
-    = MultipleChoiceKey Text Text [ChoiceFeedback]
-    | ShortAnswerKey [Text] [Float]
+    = MultipleChoiceKey Text Text [ScoredFeedback]
+    | ShortAnswerKey Text [ScoredFeedback]
     deriving (Show)
 
 inlineSpace :: Html
@@ -106,8 +106,8 @@ toXMLCDATA text
 toMoodleText :: Text -> Xml Elem
 toMoodleText text = (xelem "text" $ xtext text)
 
-toMoodleChoice :: Choice -> ChoiceFeedback -> Xml Elem
-toMoodleChoice (Choice blocks) (ChoiceFeedback score feedback)=
+toMoodleChoice :: Choice -> ScoredFeedback -> Xml Elem
+toMoodleChoice (Choice blocks) (ScoredFeedback score feedback)=
     xelem "answer" $ xattrs
         [ (xattr "fraction" ((pack . show) score))
         , (xattr "format" "html") ]
@@ -117,7 +117,7 @@ toMoodleChoice (Choice blocks) (ChoiceFeedback score feedback)=
                 <#> toTextElemCDATA feedback )
             : [] )
 
-toMoodleChoiceList :: [Choice] -> [ChoiceFeedback] -> [Xml Elem]
+toMoodleChoiceList :: [Choice] -> [ScoredFeedback] -> [Xml Elem]
 toMoodleChoiceList choices cfs = zipWith toMoodleChoice choices cfs
 
 padEnd :: Int -> a -> [a] -> [a]
@@ -142,17 +142,17 @@ toMoodleQuestion (MultipleChoice title questionText choices)
             True ->
                 (generalFeedback, choicesFeedback)
             False ->
-                ( intercalate (". \n") (filter (not . null) [generalFeedback, groupedChoiceFeedback choicesFeedback])
+                ( intercalate (". \n") (filter (not . null) [generalFeedback, groupedScoredFeedback choicesFeedback])
                 , defaultFeedback )
 
-isEmptyFeedback :: ChoiceFeedback -> Bool
-isEmptyFeedback (ChoiceFeedback _ feedback) = null feedback
+isEmptyFeedback :: ScoredFeedback -> Bool
+isEmptyFeedback (ScoredFeedback _ feedback) = null feedback
 
-groupedChoiceFeedback :: [ChoiceFeedback] -> Text
-groupedChoiceFeedback cfs =
+groupedScoredFeedback :: [ScoredFeedback] -> Text
+groupedScoredFeedback cfs =
     intercalate ", \n" (map go (filter (not . isEmptyFeedback) cfs))
     where
-        go (ChoiceFeedback _ feedback) = feedback
+        go (ScoredFeedback _ feedback) = feedback
 
 toChoices :: Block -> [Choice]
 toChoices (OrderedList _ items) = map (\x -> Choice (toText x)) items
@@ -188,26 +188,27 @@ isChoices :: Block -> Bool
 isChoices (OrderedList (1, LowerAlpha, _) _) = True
 isChoices _ = False
 
-choiceFeedbackHelper :: Text -> [Block] -> ChoiceFeedback
-choiceFeedbackHelper score feedback =
-    ChoiceFeedback feedbackScore (toText feedback)
-    where
-        feedbackScore = case ((readMaybe . unpack $ score) :: Maybe Float) of
-            Just float -> float * 100.0
-            Nothing -> 0.0
+feedbackScore :: Text -> Float
+feedbackScore score = case ((readMaybe . unpack $ score) :: Maybe Float) of
+    Just float -> float * 100.0
+    Nothing -> 0.0
 
-toFeedback :: Bool -> [Block] -> ChoiceFeedback
+scoredFeedbackHelper :: Text -> [Block] -> ScoredFeedback
+scoredFeedbackHelper score feedback =
+    ScoredFeedback (feedbackScore score) (toText feedback)
+
+toFeedback :: Bool -> [Block] -> ScoredFeedback
 toFeedback _ ((Para ((Emph [Str score]):Space:rest1)) : rest2) =
-    choiceFeedbackHelper score ((Para rest1):rest2)
+    scoredFeedbackHelper score ((Para rest1):rest2)
 toFeedback _ [Plain ((Emph [Str score]):Space:rest)] =
-    choiceFeedbackHelper score [Plain rest]
+    scoredFeedbackHelper score [Plain rest]
 toFeedback True feedback =
-    ChoiceFeedback 100 (toText feedback)
+    ScoredFeedback 100 (toText feedback)
 toFeedback False feedback =
-    ChoiceFeedback 0 (toText feedback)
+    ScoredFeedback 0 (toText feedback)
 toFeedback _ _ = error "unable to parse choice feedback"
 
-toFeedbackList :: [Bool] -> [[Block]] -> [ChoiceFeedback]
+toFeedbackList :: [Bool] -> [[Block]] -> [ScoredFeedback]
 toFeedbackList answers [] =
     zipWith toFeedback answers (map defaultFeedback answers)
 toFeedbackList answers choicesFeedback =
@@ -252,6 +253,34 @@ toMCAnswerKey [Plain ((Emph [Str answer]) : rest)] | isValidKey answer =
     toMCAnswerKeyHelper answer [Plain rest]
 toMCAnswerKey _ = error "answer key must start with the answer"
 
+isBulletList :: Block -> Bool
+isBulletList (BulletList _) = True
+isBulletList _ = False
+
+parseShortAnswers :: Text -> [Text]
+parseShortAnswers answers =
+    words (replace "," " " answers)
+
+toShortAnswerFeedback :: Block -> [ScoredFeedback]
+toShortAnswerFeedback (BulletList items) =
+    map go items
+    where
+        go [Plain ((Emph str) : rest)] = ScoredFeedback 100 (toText [Plain rest])
+
+toShortAnswerKeyHelper :: Text -> [Block] -> AnswerKey
+toShortAnswerKeyHelper answers rest =
+    case (break isBulletList rest) of
+        (feedback,[]) ->
+            ShortAnswerKey (toText feedback) (map (\ans -> ScoredFeedback 100.0 "correct") (parseShortAnswers answers))
+        (feedback, [list@(BulletList items)]) ->
+            ShortAnswerKey (toText feedback) (toShortAnswerFeedback list)
+        ([list@(BulletList items)], []) ->
+            ShortAnswerKey "" (toShortAnswerFeedback list)
+
+toShortAnswerKey :: [Block] -> AnswerKey
+toShortAnswerKey [Plain ((Strong [Str answers]) : rest)] =
+    toShortAnswerKeyHelper answers [Plain rest]
+
 toAnswerKeyList :: Block -> [AnswerKey]
 toAnswerKeyList (OrderedList _ items) = map toMCAnswerKey items
 
@@ -267,7 +296,7 @@ moodleXMLFilter (Pandoc meta blocks) = Pandoc (Meta mempty) [Plain [Str flattene
             (_, rest@(_:_)) -> rest
         olist2 = case (break isOrderedList validRest) of
             (_, []) -> error "cannot parse answer key"
-            (_, (x:[])) -> x
+            (_, [x]) -> x
             (_, (x:rest)) -> error "there is extra content at the end of the answer key"
         (OrderedList _ questionItems) = olist1
         (OrderedList _ answerItems) = olist2
