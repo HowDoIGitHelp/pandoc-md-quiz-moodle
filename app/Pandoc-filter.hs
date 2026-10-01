@@ -10,13 +10,16 @@ import Text.Read (readMaybe)
 import Debug.Trace (trace)
 import Data.Char (chr, isLower)
 import Prelude hiding (words, null)
+import qualified Text.Blaze.Html5 as H
+import Text.Blaze.Html.Renderer.Text (renderHtml)
+import Text.Blaze.Html (Html)
 
 data Choice = Choice Text
     deriving (Show)
 
 data Question
     = MultipleChoice Text Text [Choice]
-    | ShortAnswer Text Text Text
+    | ShortAnswer Text Text
     deriving (Show)
 
 data ChoiceFeedback
@@ -28,58 +31,68 @@ data AnswerKey
     | ShortAnswerKey [Text] [Float]
     deriving (Show)
 
-toHTMLFormatText :: [Inline] -> Text
-toHTMLFormatText (Space : rest) = " " <> (toHTMLFormatText rest)
-toHTMLFormatText (SoftBreak : rest) = " " <> (toHTMLFormatText rest)
-toHTMLFormatText ((Str text) : rest) = text <> (toHTMLFormatText rest)
-toHTMLFormatText ((Code _ text) : rest) =
-    "<code>" <> text <> "</code>" <> (toHTMLFormatText rest)
-toHTMLFormatText ((Math InlineMath text) : rest) =
-    "\\(" <> text <> (pack "\\)") <> (toHTMLFormatText rest)
-toHTMLFormatText ((Math DisplayMath text) : rest) =
-    "\\[" <> text <> "\\]" <> (toHTMLFormatText rest)
-toHTMLFormatText ((Emph inlines) : rest) =
-    "<em>" <> (toHTMLFormatText inlines) <> "</em>" <> (toHTMLFormatText rest)
-toHTMLFormatText ((Strong inlines) : rest) =
-    "<strong>" <> (toHTMLFormatText inlines) <> "</strong>" <> (toHTMLFormatText rest)
-toHTMLFormatText (inline : rest) = error ("unsupported inline element " ++ (show inline))
-toHTMLFormatText [] = ""
+inlineSpace :: Html
+inlineSpace = H.preEscapedToHtml (" " :: Text)
 
-toHTMLTableCell :: Cell -> Text
-toHTMLTableCell (Cell _ _ _ _ cell) = "<td>" <> (toHTMLFormatList cell) <> "</td>"
+toInlineHTML :: [Inline] -> Html
+toInlineHTML (Space : rest) =
+    inlineSpace <> (toInlineHTML rest)
+toInlineHTML (SoftBreak : rest) =
+    inlineSpace <> (toInlineHTML rest)
+toInlineHTML ((Str text) : rest) =
+    (H.preEscapedToHtml text) <> (toInlineHTML rest)
+toInlineHTML ((Code _ text) : rest) =
+    (H.code $ H.preEscapedToHtml text) <> (toInlineHTML rest)
+toInlineHTML ((Math InlineMath text) : rest) =
+    (H.preEscapedToHtml $ "\\(" <> text <> "\\)") <> (toInlineHTML rest)
+toInlineHTML ((Math DisplayMath text) : rest) =
+    (H.preEscapedToHtml $ "\\[" <> text <> "\\]") <> (toInlineHTML rest)
+toInlineHTML ((Emph inlines) : rest) =
+    (H.em $ toInlineHTML inlines) <> (toInlineHTML rest)
+toInlineHTML ((Strong inlines) : rest) =
+    (H.strong $ toInlineHTML inlines) <> (toInlineHTML rest)
+toInlineHTML (inline : rest) = error ("unsupported inline element " ++ (show inline))
+toInlineHTML [] = mempty
 
-toHTMLTableRow :: Row -> Text
+toHTMLTableCell :: Cell -> Html
+toHTMLTableCell (Cell _ _ _ _ cell) =
+    H.td $ toHTMLFormatList cell
+
+toHTMLTableRow :: Row -> Html
 toHTMLTableRow (Row _ cells) =
-    "<tr>" <> (intercalate " " (map toHTMLTableCell cells)) <> "</tr>"
+    H.tr $ foldr (>>) mempty (map toHTMLTableCell cells)
 
-toHTMLTableHeadCell :: Cell -> Text
-toHTMLTableHeadCell (Cell _ _ _ _ cell) = "<th>" <> (toHTMLFormatList cell) <> "</th>"
+toHTMLTableHeadCell :: Cell -> Html
+toHTMLTableHeadCell (Cell _ _ _ _ cell) =
+    H.th $ toHTMLFormatList cell
 
-toHTMLTableHead :: TableHead -> Text
+toHTMLTableHead :: TableHead -> Html
 toHTMLTableHead (TableHead _ [(Row _ cells)]) =
-    "<thead><tr>" <> (intercalate " " (map toHTMLTableHeadCell cells)) <> "</tr></thead>"
+    H.thead $ (H.tr $ foldr (>>) mempty (map toHTMLTableCell cells))
 
-toHTMLTableBody :: TableBody -> Text
+toHTMLTableBody :: TableBody -> Html
 toHTMLTableBody (TableBody _ _ _ rows) =
-    "<tbody>" <> (intercalate "\n" (map toHTMLTableRow rows)) <> "</tbody>"
+    H.tbody $ foldr (>>) mempty (map toHTMLTableRow rows)
 
-toHTMLFormat :: Block -> Text
-toHTMLFormat (Para inlines) = "<p>" <> (toHTMLFormatText inlines) <> "</p>"
-toHTMLFormat (Plain inlines) = toHTMLFormatText inlines
-toHTMLFormat (CodeBlock _ text) = "<pre><code>" <> text <> "</code></pre>"
-toHTMLFormat (BlockQuote blocks) = "<quote>" <> (toHTMLFormatList blocks) <> "</quote>"
-toHTMLFormat (Para [Math DisplayMath text]) = "\\[" <> text <> "\\]"
-toHTMLFormat (BulletList items) = "<ul>" <> htmlItemsBlock <> "</ul>"
+toHTMLFormat :: Block -> Html
+toHTMLFormat (Para inlines) = (H.p . toInlineHTML) inlines
+toHTMLFormat (Plain inlines) = toInlineHTML inlines
+toHTMLFormat (CodeBlock _ text) = (H.pre . H.code . H.preEscapedToHtml) text
+toHTMLFormat (BlockQuote blocks) = H.blockquote (toHTMLFormatList blocks)
+toHTMLFormat (Para [Math DisplayMath text]) = H.preEscapedToHtml ("\\[" <> text <> "\\]")
+toHTMLFormat (BulletList items) = H.ul htmlItemsBlock
     where
-        htmlItems = map (\li -> "<li>" <> (toHTMLFormatList li) <> "</li>") items
-        htmlItemsBlock = intercalate "\n" htmlItems
+        htmlItems = map (\li -> H.li (toHTMLFormatList li)) items
+        htmlItemsBlock = foldr (>>) mempty htmlItems
 toHTMLFormat (Table _ _ _ head [body] _) =
-    "<table>" <> (toHTMLTableHead head) <> "\n"
-        <> (toHTMLTableBody body) <> "</table>"
+    H.table $ (toHTMLTableHead head) >> (toHTMLTableBody body)
 toHTMLFormat block = error ("unsupported block" ++ (show block))
 
-toHTMLFormatList :: [Block] -> Text
-toHTMLFormatList blocks = intercalate "\n" (map toHTMLFormat blocks)
+toHTMLFormatList :: [Block] -> Html
+toHTMLFormatList blocks = foldr (>>) mempty (map toHTMLFormat blocks)
+
+toText :: [Block] -> Text
+toText blocks = (TL.toStrict . renderHtml . toHTMLFormatList) blocks
 
 toTextElemCDATA :: Text -> Xml Elem
 toTextElemCDATA text =
@@ -89,13 +102,6 @@ toXMLCDATA :: Text -> Xml Elem
 toXMLCDATA text
     | (null text) = xtextRaw " "
     | otherwise = xtextRaw ("<![CDATA[" <> (encodeUtf8Builder text) <> "]]>")
-
-toMoodleTextBlock :: Text -> [Inline] -> [Xml Elem] -> Xml Elem
-toMoodleTextBlock tagName inlines children =
-    xelem tagName
-        ( xattr "format" "html"
-            <#> ( xelem "text"
-                ((toXMLCDATA . toHTMLFormatText) inlines) ) )
 
 toMoodleText :: Text -> Xml Elem
 toMoodleText text = (xelem "text" $ xtext text)
@@ -149,7 +155,7 @@ groupedChoiceFeedback cfs =
         go (ChoiceFeedback _ feedback) = feedback
 
 toChoices :: Block -> [Choice]
-toChoices (OrderedList _ items) = map (\x -> Choice (toHTMLFormatList x)) items
+toChoices (OrderedList _ items) = map (\x -> Choice (toText x)) items
 toChoices b = error ("unable to parse choices " ++ (show b))
 
 isParagraph :: Block -> Bool
@@ -157,26 +163,34 @@ isParagraph (Para _) = True
 isParagraph _ = False
 
 toMCQuestion :: [Block] -> Block -> Question
-toMCQuestion paraList list =
-    MultipleChoice "Multiple Choice Question" (toHTMLFormatList paraList) (toChoices list)
+toMCQuestion blocks list =
+    MultipleChoice "Multiple Choice Question" (toText blocks) (toChoices list)
 toMCQuestion [] _ = error "Multiple Choice Question must start with question text"
+
+toSAQuestion :: [Block] -> Question
+toSAQuestion blocks =
+    ShortAnswer "Short Answer Question" (toText blocks)
 
 toQuestions :: [[Block]] -> [Question]
 toQuestions items = map go items
     where
-        go q = case (span (not . isOrderedList) q) of
-            (takenParas, (list@(OrderedList _ _) : [])) ->
-                (toMCQuestion takenParas list)
+        go q = case (span (not . isChoices) q) of
+            (takenParas, (choices@(OrderedList _ _) : [])) ->
+                (toMCQuestion takenParas choices)
+            (takenParas, (choices@(OrderedList _ _) : rest)) ->
+                toSAQuestion (takenParas ++ [choices]  ++ rest)
+            (takenParas, []) ->
+                toSAQuestion takenParas
             (takenParas, _) -> error ("unsupported pattern" ++ (show q))
             _ -> error "unsupported pattern"
 
-isOrderedList :: Block -> Bool
-isOrderedList (OrderedList _ _) = True
-isOrderedList _ = False
+isChoices :: Block -> Bool
+isChoices (OrderedList (1, LowerAlpha, _) _) = True
+isChoices _ = False
 
 choiceFeedbackHelper :: Text -> [Block] -> ChoiceFeedback
 choiceFeedbackHelper score feedback =
-    ChoiceFeedback feedbackScore (toHTMLFormatList feedback)
+    ChoiceFeedback feedbackScore (toText feedback)
     where
         feedbackScore = case ((readMaybe . unpack $ score) :: Maybe Float) of
             Just float -> float * 100.0
@@ -188,9 +202,9 @@ toFeedback _ ((Para ((Emph [Str score]):Space:rest1)) : rest2) =
 toFeedback _ [Plain ((Emph [Str score]):Space:rest)] =
     choiceFeedbackHelper score [Plain rest]
 toFeedback True feedback =
-    ChoiceFeedback 100 (toHTMLFormatList feedback)
+    ChoiceFeedback 100 (toText feedback)
 toFeedback False feedback =
-    ChoiceFeedback 0 (toHTMLFormatList feedback)
+    ChoiceFeedback 0 (toText feedback)
 toFeedback _ _ = error "unable to parse choice feedback"
 
 toFeedbackList :: [Bool] -> [[Block]] -> [ChoiceFeedback]
@@ -220,11 +234,11 @@ toMCAnswerKeyHelper :: Text -> [Block] -> AnswerKey
 toMCAnswerKeyHelper answer rest =
     case (break isOrderedList rest) of
         (feedback, []) ->
-            MultipleChoiceKey answer (toHTMLFormatList feedback) []
+            MultipleChoiceKey answer (toText feedback) []
         (feedback, [OrderedList _ items]) ->
-            MultipleChoiceKey answer (toHTMLFormatList feedback) (toFeedbackList (parseAnswers answer) items)
+            MultipleChoiceKey answer (toText feedback) (toFeedbackList (parseAnswers answer) items)
         (feedback, ((OrderedList _ items):extraFeedback)) ->
-            MultipleChoiceKey answer (toHTMLFormatList (feedback ++ extraFeedback)) (toFeedbackList (parseAnswers answer) items)
+            MultipleChoiceKey answer (toText (feedback ++ extraFeedback)) (toFeedbackList (parseAnswers answer) items)
         _ -> error "unable to parse answer key"
 
 toMCAnswerKey :: [Block] -> AnswerKey
@@ -232,8 +246,6 @@ toMCAnswerKey ((Para [Str answer]) : rest) | isValidKey answer =
     toMCAnswerKeyHelper answer rest
 toMCAnswerKey ((Plain [Str answer]) : rest) | isValidKey answer =
     toMCAnswerKeyHelper answer rest
-toMCAnswerKey [Plain (Str answer : rest)] | isValidKey answer =
-    toMCAnswerKeyHelper answer [Plain rest]
 toMCAnswerKey [Plain ((Strong [Str answer]) : rest)] | isValidKey answer =
     toMCAnswerKeyHelper answer [Plain rest]
 toMCAnswerKey [Plain ((Emph [Str answer]) : rest)] | isValidKey answer =
@@ -242,6 +254,10 @@ toMCAnswerKey _ = error "answer key must start with the answer"
 
 toAnswerKeyList :: Block -> [AnswerKey]
 toAnswerKeyList (OrderedList _ items) = map toMCAnswerKey items
+
+isOrderedList :: Block -> Bool
+isOrderedList (OrderedList _ _) = True
+isOrderedList _ = False
 
 moodleXMLFilter :: Pandoc -> Pandoc
 moodleXMLFilter (Pandoc meta blocks) = Pandoc (Meta mempty) [Plain [Str flattenedXMLText]]
