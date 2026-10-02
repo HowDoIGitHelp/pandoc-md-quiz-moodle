@@ -23,7 +23,8 @@ data Question
     deriving (Show)
 
 data ScoredFeedback
-    = ScoredFeedback Float Text
+    = ScoredFeedbackChoice Float Text
+    | ScoredFeedbackText Float Text Text
     deriving (Show)
 
 data AnswerKey
@@ -51,7 +52,8 @@ toInlineHTML ((Emph inlines) : rest) =
     (H.em $ toInlineHTML inlines) <> (toInlineHTML rest)
 toInlineHTML ((Strong inlines) : rest) =
     (H.strong $ toInlineHTML inlines) <> (toInlineHTML rest)
-toInlineHTML (inline : rest) = error ("unsupported inline element " ++ (show inline))
+toInlineHTML (inline : rest) =
+    error ("unsupported inline element " ++ (show inline))
 toInlineHTML [] = mempty
 
 toHTMLTableCell :: Cell -> Html
@@ -79,7 +81,8 @@ toHTMLFormat (Para inlines) = (H.p . toInlineHTML) inlines
 toHTMLFormat (Plain inlines) = toInlineHTML inlines
 toHTMLFormat (CodeBlock _ text) = (H.pre . H.code . H.preEscapedToHtml) text
 toHTMLFormat (BlockQuote blocks) = H.blockquote (toHTMLFormatList blocks)
-toHTMLFormat (Para [Math DisplayMath text]) = H.preEscapedToHtml ("\\[" <> text <> "\\]")
+toHTMLFormat (Para [Math DisplayMath text]) =
+    H.preEscapedToHtml ("\\[" <> text <> "\\]")
 toHTMLFormat (BulletList items) = H.ul htmlItemsBlock
     where
         htmlItems = map (\li -> H.li (toHTMLFormatList li)) items
@@ -107,7 +110,7 @@ toMoodleText :: Text -> Xml Elem
 toMoodleText text = (xelem "text" $ xtext text)
 
 toMoodleChoice :: Choice -> ScoredFeedback -> Xml Elem
-toMoodleChoice (Choice blocks) (ScoredFeedback score feedback)=
+toMoodleChoice (Choice blocks) (ScoredFeedbackChoice score feedback)=
     xelem "answer" $ xattrs
         [ (xattr "fraction" ((pack . show) score))
         , (xattr "format" "html") ]
@@ -137,22 +140,30 @@ toMoodleQuestion (MultipleChoice title questionText choices)
         : (toMoodleChoiceList choices choicesFeedback') ) )
     where
         nChoices = (length choices)
-        defaultFeedback = toFeedbackList (padEnd nChoices False (parseAnswers key)) []
-        (generalFeedback', choicesFeedback') = case (length choices) == (length choicesFeedback) of
+        defaultFeedback = toFeedbackList
+            (padEnd nChoices False (parseAnswers key)) []
+        (generalFeedback', choicesFeedback') = case
+            (length choices) == (length choicesFeedback) of
             True ->
                 (generalFeedback, choicesFeedback)
             False ->
-                ( intercalate (". \n") (filter (not . null) [generalFeedback, groupedScoredFeedback choicesFeedback])
+                ( intercalate (". \n")
+                    ( filter
+                        (not . null)
+                        [ generalFeedback,
+                            groupedScoredFeedback choicesFeedback ] )
                 , defaultFeedback )
+toMoodleQuestion (ShortAnswer title questionText)
+    (ShortAnswerKey generalFeedback answers) = error "unsupported"
 
 isEmptyFeedback :: ScoredFeedback -> Bool
-isEmptyFeedback (ScoredFeedback _ feedback) = null feedback
+isEmptyFeedback (ScoredFeedbackChoice _ feedback) = null feedback
 
 groupedScoredFeedback :: [ScoredFeedback] -> Text
 groupedScoredFeedback cfs =
     intercalate ", \n" (map go (filter (not . isEmptyFeedback) cfs))
     where
-        go (ScoredFeedback _ feedback) = feedback
+        go (ScoredFeedbackChoice _ feedback) = feedback
 
 toChoices :: Block -> [Choice]
 toChoices (OrderedList _ items) = map (\x -> Choice (toText x)) items
@@ -193,26 +204,28 @@ feedbackScore score = case ((readMaybe . unpack $ score) :: Maybe Float) of
     Just float -> float * 100.0
     Nothing -> 0.0
 
-scoredFeedbackHelper :: Text -> [Block] -> ScoredFeedback
-scoredFeedbackHelper score feedback =
-    ScoredFeedback (feedbackScore score) (toText feedback)
+scoredFeedbackChoiceHelper :: Text -> [Block] -> ScoredFeedback
+scoredFeedbackChoiceHelper score feedback =
+    ScoredFeedbackChoice (feedbackScore score) (toText feedback)
 
 toFeedback :: Bool -> [Block] -> ScoredFeedback
 toFeedback _ ((Para ((Emph [Str score]):Space:rest1)) : rest2) =
-    scoredFeedbackHelper score ((Para rest1):rest2)
+    scoredFeedbackChoiceHelper score ((Para rest1):rest2)
 toFeedback _ [Plain ((Emph [Str score]):Space:rest)] =
-    scoredFeedbackHelper score [Plain rest]
+    scoredFeedbackChoiceHelper score [Plain rest]
 toFeedback True feedback =
-    ScoredFeedback 100 (toText feedback)
+    ScoredFeedbackChoice 100 (toText feedback)
 toFeedback False feedback =
-    ScoredFeedback 0 (toText feedback)
+    ScoredFeedbackChoice 0 (toText feedback)
 toFeedback _ _ = error "unable to parse choice feedback"
 
 toFeedbackList :: [Bool] -> [[Block]] -> [ScoredFeedback]
 toFeedbackList answers [] =
     zipWith toFeedback answers (map defaultFeedback answers)
 toFeedbackList answers choicesFeedback =
-    zipWith toFeedback (padEnd (length choicesFeedback) False answers) choicesFeedback
+    zipWith toFeedback
+        (padEnd (length choicesFeedback) False answers)
+        choicesFeedback
 
 defaultFeedback True = [Plain [Str "Correct"]]
 defaultFeedback False = [Plain [Str "Incorrect"]]
@@ -228,7 +241,9 @@ parseAnswers answer = answersBool
     where
         answersClean = replace "," " " answer
         answersList = words answersClean
-        bools = map (\choice -> (elem (pack [chr choice]) answersList)) [122,121..97]
+        bools = map
+            (\choice -> (elem (pack [chr choice]) answersList))
+            [122,121..97]
         answersBool = reverse (dropWhile not bools)
 
 toMCAnswerKeyHelper :: Text -> [Block] -> AnswerKey
@@ -237,9 +252,15 @@ toMCAnswerKeyHelper answer rest =
         (feedback, []) ->
             MultipleChoiceKey answer (toText feedback) []
         (feedback, [OrderedList _ items]) ->
-            MultipleChoiceKey answer (toText feedback) (toFeedbackList (parseAnswers answer) items)
+            MultipleChoiceKey
+                answer
+                (toText feedback)
+                (toFeedbackList (parseAnswers answer) items)
         (feedback, ((OrderedList _ items):extraFeedback)) ->
-            MultipleChoiceKey answer (toText (feedback ++ extraFeedback)) (toFeedbackList (parseAnswers answer) items)
+            MultipleChoiceKey
+                answer
+                (toText (feedback ++ extraFeedback))
+                (toFeedbackList (parseAnswers answer) items)
         _ -> error "unable to parse answer key"
 
 toMCAnswerKey :: [Block] -> AnswerKey
@@ -265,13 +286,27 @@ toShortAnswerFeedback :: Block -> [ScoredFeedback]
 toShortAnswerFeedback (BulletList items) =
     map go items
     where
-        go [Plain ((Emph str) : rest)] = ScoredFeedback 100 (toText [Plain rest])
+        go [Plain ((Emph str) : rest)] =
+            ScoredFeedbackText 100 (toText [Plain str]) (toText [Plain rest])
+        go [Plain ((Strong str) : rest)] =
+            ScoredFeedbackText 100 (toText [Plain str]) (toText [Plain rest])
+        go ((Para inlines) : rest) =
+            ScoredFeedbackText 100 (toText [Plain inlines]) (toText rest)
+        go _ = error "not a valid short answer format"
+
+extractFeedbackList :: [ScoredFeedback] -> [Text]
+extractFeedbackList feedbackList =
+    map go feedbackList
+    where
+        go (ScoredFeedbackText _ ans _) = ans
 
 toShortAnswerKeyHelper :: Text -> [Block] -> AnswerKey
 toShortAnswerKeyHelper answers rest =
     case (break isBulletList rest) of
         (feedback,[]) ->
-            ShortAnswerKey (toText feedback) (map (\ans -> ScoredFeedback 100.0 "correct") (parseShortAnswers answers))
+            ShortAnswerKey (toText feedback)
+                ( map (\ans -> ScoredFeedbackText 100.0 ans "correct")
+                    (parseShortAnswers answers) )
         (feedback, [list@(BulletList items)]) ->
             ShortAnswerKey (toText feedback) (toShortAnswerFeedback list)
         ([list@(BulletList items)], []) ->
