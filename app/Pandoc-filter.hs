@@ -126,11 +126,11 @@ toMoodleChoiceList choices cfs = zipWith toMoodleChoice choices cfs
 padEnd :: Int -> a -> [a] -> [a]
 padEnd n padding list = list ++ (replicate (n - length list) padding)
 
-toMoodleQuestion :: Question -> AnswerKey -> Xml Elem
-toMoodleQuestion (MultipleChoice title questionText choices)
+toMoodleQuestion :: Int -> Question -> AnswerKey -> Xml Elem
+toMoodleQuestion id (MultipleChoice title questionText choices)
     (MultipleChoiceKey generalFeedback choicesFeedback) =
     ( xelem "question" $ xattr "type" "multichoice" <#> ( xelems
-        $ (xelem "name" $ toMoodleText title)
+        $ (xelem "name" $ toMoodleText ((pack $ show id) <> " " <> title))
         : ( xelem "questiontext"
             ( xattr "format" "html"
                 <#> toTextElemCDATA questionText ) )
@@ -147,7 +147,7 @@ toMoodleQuestion (MultipleChoice title questionText choices)
             then defaultFeedback
             else choicesFeedback
 
-toMoodleQuestion (ShortAnswer title questionText)
+toMoodleQuestion id (ShortAnswer title questionText)
     (ShortAnswerKey generalFeedback answers) = error "unsupported"
 
 isEmptyFeedback :: ScoredFeedback -> Bool
@@ -169,7 +169,7 @@ isParagraph _ = False
 
 toMCQuestion :: [Block] -> Block -> Question
 toMCQuestion blocks list =
-    MultipleChoice "Multiple Choice Question" (toText blocks) (toChoices list)
+    MultipleChoice "MC Question" (toText blocks) (toChoices list)
 toMCQuestion [] _ = error "Multiple Choice Question must start with question text"
 
 toSAQuestion :: [Block] -> Question
@@ -341,7 +341,7 @@ moodleXMLFilter (Pandoc meta blocks) = Pandoc (Meta mempty) [Plain [Str flattene
         (OrderedList _ answerItems) = olist2
         questions = toQuestions questionItems
         answerKeys = toAnswerKeyList olist2
-        moodleQuestions = zipWith toMoodleQuestion questions answerKeys
+        moodleQuestions = zipWith3 toMoodleQuestion [1..(length questions)] questions answerKeys
         renderedXML = xrender (doc defaultDocInfo (xelem "quiz" (xelems moodleQuestions)))
         flattenedXMLText = replace "\n>" ">" (decodeUtf8 renderedXML)
 
