@@ -229,7 +229,7 @@ toFeedbackList answers choicesFeedback =
         (answers', choicesFeedback') =
             unzip (paddedZip False [Plain [Str ""]] answers choicesFeedback)
 
-plainFeedback True = ScoredFeedbackChoice 1.0 "Correct"
+plainFeedback True = ScoredFeedbackChoice 100.0 "Correct"
 plainFeedback False = ScoredFeedbackChoice 0.0 "Incorrect"
 
 isValidKey :: Text -> Bool
