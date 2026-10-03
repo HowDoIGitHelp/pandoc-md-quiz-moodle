@@ -82,7 +82,7 @@ toHTMLFormat (Plain inlines) = toInlineHTML inlines
 toHTMLFormat (CodeBlock _ text) = (H.pre . H.code . H.preEscapedToHtml) text
 toHTMLFormat (BlockQuote blocks) = H.blockquote (toHTMLFormatList blocks)
 toHTMLFormat (Para [Math DisplayMath text]) =
-    H.preEscapedToHtml ("\\[" <> text <> "\\]")
+    (H.p . H.preEscapedToHtml) ("\\[" <> text <> "\\]")
 toHTMLFormat (BulletList items) = H.ul htmlItemsBlock
     where
         htmlItems = map (\li -> H.li (toHTMLFormatList li)) items
