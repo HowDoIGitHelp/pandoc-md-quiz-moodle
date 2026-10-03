@@ -28,7 +28,7 @@ data ScoredFeedback
     deriving (Show)
 
 data AnswerKey
-    = MultipleChoiceKey Text Text [ScoredFeedback]
+    = MultipleChoiceKey Text [ScoredFeedback]
     | ShortAnswerKey Text [ScoredFeedback]
     deriving (Show)
 
@@ -128,7 +128,7 @@ padEnd n padding list = list ++ (replicate (n - length list) padding)
 
 toMoodleQuestion :: Question -> AnswerKey -> Xml Elem
 toMoodleQuestion (MultipleChoice title questionText choices)
-    (MultipleChoiceKey key generalFeedback choicesFeedback) =
+    (MultipleChoiceKey generalFeedback choicesFeedback) =
     ( xelem "question" $ xattr "type" "multichoice" <#> ( xelems
         $ (xelem "name" $ toMoodleText title)
         : ( xelem "questiontext"
@@ -136,23 +136,17 @@ toMoodleQuestion (MultipleChoice title questionText choices)
                 <#> toTextElemCDATA questionText ) )
         : ( xelem "generalfeedback"
             $ xattr "format" "html"
-            <#> toTextElemCDATA generalFeedback' )
+            <#> toTextElemCDATA generalFeedback )
         : (toMoodleChoiceList choices choicesFeedback') ) )
     where
-        nChoices = (length choices)
-        defaultFeedback = toFeedbackList
-            (padEnd nChoices False (parseAnswers key)) []
-        (generalFeedback', choicesFeedback') = case
-            (length choices) == (length choicesFeedback) of
-            True ->
-                (generalFeedback, choicesFeedback)
-            False ->
-                ( intercalate (". \n")
-                    ( filter
-                        (not . null)
-                        [ generalFeedback,
-                            groupedScoredFeedback choicesFeedback ] )
-                , defaultFeedback )
+        defaultFeedback = ( padEnd
+            (length choices)
+            (plainFeedback False)
+            choicesFeedback )
+        choicesFeedback' = if (length choicesFeedback < length choices)
+            then defaultFeedback
+            else choicesFeedback
+
 toMoodleQuestion (ShortAnswer title questionText)
     (ShortAnswerKey generalFeedback answers) = error "unsupported"
 
@@ -219,16 +213,24 @@ toFeedback False feedback =
     ScoredFeedbackChoice 0 (toText feedback)
 toFeedback _ _ = error "unable to parse choice feedback"
 
-toFeedbackList :: [Bool] -> [[Block]] -> [ScoredFeedback]
-toFeedbackList answers [] =
-    zipWith toFeedback answers (map defaultFeedback answers)
-toFeedbackList answers choicesFeedback =
-    zipWith toFeedback
-        (padEnd (length choicesFeedback) False answers)
-        choicesFeedback
+paddedZip :: a -> b -> [a] -> [b] -> [(a,b)]
+paddedZip _ _ [] [] = []
+paddedZip defA defB  (x:xs) [] =
+    (x, defB) : (paddedZip defA defB xs [])
+paddedZip defA defB  [] (y:ys) =
+    (defA, y) : (paddedZip defA defB [] ys)
+paddedZip defA defB (x:xs) (y:ys) =
+    (x, y) : (paddedZip defA defB xs ys)
 
-defaultFeedback True = [Plain [Str "Correct"]]
-defaultFeedback False = [Plain [Str "Incorrect"]]
+toFeedbackList :: [Bool] -> [[Block]] -> [ScoredFeedback]
+toFeedbackList answers choicesFeedback =
+    zipWith toFeedback answers' choicesFeedback'
+    where
+        (answers', choicesFeedback') =
+            unzip (paddedZip False [Plain [Str ""]] answers choicesFeedback)
+
+plainFeedback True = ScoredFeedbackChoice 1.0 "Correct"
+plainFeedback False = ScoredFeedbackChoice 0.0 "Incorrect"
 
 isValidKey :: Text -> Bool
 isValidKey text =
@@ -246,19 +248,21 @@ parseAnswers answer = answersBool
             [122,121..97]
         answersBool = reverse (dropWhile not bools)
 
+plainMCFeedbackList :: Text -> [ScoredFeedback]
+plainMCFeedbackList answer =
+    map plainFeedback (parseAnswers answer)
+
 toMCAnswerKeyHelper :: Text -> [Block] -> AnswerKey
 toMCAnswerKeyHelper answer rest =
     case (break isOrderedList rest) of
         (feedback, []) ->
-            MultipleChoiceKey answer (toText feedback) []
+            MultipleChoiceKey (toText feedback) (plainMCFeedbackList answer)
         (feedback, [OrderedList _ items]) ->
             MultipleChoiceKey
-                answer
                 (toText feedback)
                 (toFeedbackList (parseAnswers answer) items)
         (feedback, ((OrderedList _ items):extraFeedback)) ->
             MultipleChoiceKey
-                answer
                 (toText (feedback ++ extraFeedback))
                 (toFeedbackList (parseAnswers answer) items)
         _ -> error "unable to parse answer key"
