@@ -20,8 +20,8 @@ toMoodleChoice (Choice blocks) (ChoiceFeedback score feedback)=
                 <#> toTextElemCDATA feedback )
             : [] )
 
-toMoodleQuestion :: Int -> MultipleChoice -> MultipleChoiceKey -> Xml Elem
-toMoodleQuestion id (MultipleChoice title questionText choices)
+toMoodleMultipleChoice :: Int -> MultipleChoice -> MultipleChoiceKey -> Xml Elem
+toMoodleMultipleChoice id (MultipleChoice title questionText choices)
     (MultipleChoiceKey generalFeedback choicesFeedback) =
     ( xelem "question" $ xattr "type" "multichoice" <#> ( xelems
         $ (xelem "name" $ toMoodleText ((pack $ show id) <> " " <> title))

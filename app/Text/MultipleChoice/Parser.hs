@@ -14,19 +14,19 @@ toChoices :: Block -> [Choice]
 toChoices (OrderedList _ items) = map (\x -> Choice (toText x)) items
 toChoices b = error ("unable to parse choices " ++ (show b))
 
-toMCQuestion :: [Block] -> Block -> MultipleChoice
-toMCQuestion blocks list =
+toMultipleChoice :: [Block] -> Block -> MultipleChoice
+toMultipleChoice blocks list =
     MultipleChoice "MC Question" (toText blocks) (toChoices list)
-toMCQuestion [] _ = error "Multiple Choice Question must start with question text"
+toMultipleChoice [] _ = error "Multiple Choice Question must start with question text"
 
-toQuestions :: [[Block]] -> [MultipleChoice]
-toQuestions items = map go items
+toMultipleChoiceList :: Block -> [MultipleChoice]
+toMultipleChoiceList (OrderedList _ items) = map go items
     where
         go q = case (span (not . isChoices) q) of
             (takenParas, (choices@(OrderedList _ _) : [])) ->
-                (toMCQuestion takenParas choices)
+                (toMultipleChoice takenParas choices)
             (takenParas, (choices@(OrderedList _ _) : rest)) ->
-                toMCQuestion (takenParas ++ rest) choices
+                toMultipleChoice (takenParas ++ rest) choices
             (takenParas, []) ->
                 error ("missing choices")
             (takenParas, _) ->
@@ -41,16 +41,16 @@ scoredFeedbackChoiceHelper :: Text -> [Block] -> ChoiceFeedback
 scoredFeedbackChoiceHelper score feedback =
     ChoiceFeedback (feedbackScore score) (toText feedback)
 
-toFeedback :: Bool -> [Block] -> ChoiceFeedback
-toFeedback _ ((Para ((Emph [Str score]):Space:rest1)) : rest2) =
+toChoiceFeedback :: Bool -> [Block] -> ChoiceFeedback
+toChoiceFeedback _ ((Para ((Emph [Str score]):Space:rest1)) : rest2) =
     scoredFeedbackChoiceHelper score ((Para rest1):rest2)
-toFeedback _ [Plain ((Emph [Str score]):Space:rest)] =
+toChoiceFeedback _ [Plain ((Emph [Str score]):Space:rest)] =
     scoredFeedbackChoiceHelper score [Plain rest]
-toFeedback True feedback =
+toChoiceFeedback True feedback =
     ChoiceFeedback 100 (toText feedback)
-toFeedback False feedback =
+toChoiceFeedback False feedback =
     ChoiceFeedback 0 (toText feedback)
-toFeedback _ _ = error "unable to parse choice feedback"
+toChoiceFeedback _ _ = error "unable to parse choice feedback"
 
 plainFeedback True = ChoiceFeedback 100.0 "Correct"
 plainFeedback False = ChoiceFeedback 0.0 "Incorrect"
@@ -75,9 +75,9 @@ plainMCFeedbackList :: Text -> [ChoiceFeedback]
 plainMCFeedbackList answer =
     map plainFeedback (parseAnswers answer)
 
-toFeedbackList :: [Bool] -> [[Block]] -> [ChoiceFeedback]
-toFeedbackList answers choicesFeedback =
-    zipWith toFeedback answers' choicesFeedback'
+toChoiceFeedbackList :: [Bool] -> [[Block]] -> [ChoiceFeedback]
+toChoiceFeedbackList answers choicesFeedback =
+    zipWith toChoiceFeedback answers' choicesFeedback'
     where
         (answers', choicesFeedback') =
             unzip (paddedZip False [Plain [Str ""]] answers choicesFeedback)
@@ -90,24 +90,24 @@ toMCAnswerKeyHelper answer rest =
         (feedback, [OrderedList _ items]) ->
             MultipleChoiceKey
                 (toText feedback)
-                (toFeedbackList (parseAnswers answer) items)
+                (toChoiceFeedbackList (parseAnswers answer) items)
         (feedback, ((OrderedList _ items):extraFeedback)) ->
             MultipleChoiceKey
                 (toText (feedback ++ extraFeedback))
-                (toFeedbackList (parseAnswers answer) items)
+                (toChoiceFeedbackList (parseAnswers answer) items)
         _ -> error "unable to parse answer key"
 
-toMCAnswerKey :: [Block] -> MultipleChoiceKey
-toMCAnswerKey ((Para [Str answer]) : rest) | isValidKey answer =
+toMultipleChoiceAnswerKey :: [Block] -> MultipleChoiceKey
+toMultipleChoiceAnswerKey ((Para [Str answer]) : rest) | isValidKey answer =
     toMCAnswerKeyHelper answer rest
-toMCAnswerKey ((Plain [Str answer]) : rest) | isValidKey answer =
+toMultipleChoiceAnswerKey ((Plain [Str answer]) : rest) | isValidKey answer =
     toMCAnswerKeyHelper answer rest
-toMCAnswerKey [Plain ((Strong [Str answer]) : rest)] | isValidKey answer =
+toMultipleChoiceAnswerKey [Plain ((Strong [Str answer]) : rest)] | isValidKey answer =
     toMCAnswerKeyHelper answer [Plain rest]
-toMCAnswerKey [Plain ((Emph [Str answer]) : rest)] | isValidKey answer =
+toMultipleChoiceAnswerKey [Plain ((Emph [Str answer]) : rest)] | isValidKey answer =
     toMCAnswerKeyHelper answer [Plain rest]
-toMCAnswerKey _ = error "answer key must start with the answer"
+toMultipleChoiceAnswerKey _ = error "answer key must start with the answer"
 
-toAnswerKeyList :: Block -> [MultipleChoiceKey]
-toAnswerKeyList (OrderedList _ items) = map toMCAnswerKey items
+toMultipleChoiceAnswerKeyList :: Block -> [MultipleChoiceKey]
+toMultipleChoiceAnswerKeyList (OrderedList _ items) = map toMultipleChoiceAnswerKey items
 

@@ -13,5 +13,3 @@ data MultipleChoiceKey = MultipleChoiceKey Text [ChoiceFeedback]
 
 data ChoiceFeedback = ChoiceFeedback Float Text
     deriving (Show)
-
-
