@@ -1,13 +1,13 @@
 {-# Language OverloadedStrings #-}
 
-module Text.MultipleChoice.Renderer where
+module Text.MDQuizMoodle.MultipleChoice.Renderer where
 
 import Text.XML.Generator
 import Data.Text (pack)
-import Text.MultipleChoice.Types
-import Text.MultipleChoice.Parser
-import Text.Util.XMLRender (toTextElemCDATA, toMoodleText)
-import Text.Util.Helper (padEnd)
+import Text.MDQuizMoodle.MultipleChoice.Types
+import Text.MDQuizMoodle.MultipleChoice.Parser
+import Text.MDQuizMoodle.Util.XMLRender (toTextElemCDATA, toMoodleText)
+import Text.MDQuizMoodle.Util.Helper (padEnd)
 
 toMoodleChoice :: Choice -> ChoiceFeedback -> Xml Elem
 toMoodleChoice (Choice blocks) (ChoiceFeedback score feedback)=

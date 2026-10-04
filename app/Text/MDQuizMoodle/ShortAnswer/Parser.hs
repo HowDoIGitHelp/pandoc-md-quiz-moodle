@@ -1,11 +1,11 @@
 {-# Language OverloadedStrings #-}
 
-module Text.ShortAnswer.Parser where
+module Text.MDQuizMoodle.ShortAnswer.Parser where
 
 import Text.Pandoc.JSON
-import Text.ShortAnswer.Types
-import Text.Util.HtmlTextRender (toText)
-import Text.Util.Helper
+import Text.MDQuizMoodle.ShortAnswer.Types
+import Text.MDQuizMoodle.Util.HtmlTextRender (toText)
+import Text.MDQuizMoodle.Util.Helper
 import Data.Text (Text, replace, words)
 import Prelude hiding (words)
 

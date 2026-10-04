@@ -1,4 +1,4 @@
-module Text.ShortAnswer.Types where
+module Text.MDQuizMoodle.ShortAnswer.Types where
 
 import Data.Text
 

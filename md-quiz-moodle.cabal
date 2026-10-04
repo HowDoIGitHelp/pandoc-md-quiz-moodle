@@ -55,16 +55,18 @@ executable md-quiz-moodle
     import:           warnings
 
     -- .hs or .lhs file containing the Main module.
-    main-is:          Text/PandocFilter.hs
+    main-is:          Text/MDQuizMoodle/PandocFilter.hs
 
     -- Modules included in this executable, other than Main.
-    other-modules:    Text.MultipleChoice.Parser
-                      Text.MultipleChoice.Renderer
-                      Text.MultipleChoice.Types
-                      Text.Util.Helper
-                      Text.Util.HtmlTextRender
-                      Text.Util.XMLRender
-
+    other-modules:    Text.MDQuizMoodle.MultipleChoice.Parser
+                      Text.MDQuizMoodle.MultipleChoice.Renderer
+                      Text.MDQuizMoodle.MultipleChoice.Types
+                      Text.MDQuizMoodle.ShortAnswer.Parser
+                      Text.MDQuizMoodle.ShortAnswer.Renderer
+                      Text.MDQuizMoodle.ShortAnswer.Types
+                      Text.MDQuizMoodle.Util.Helper
+                      Text.MDQuizMoodle.Util.HtmlTextRender
+                      Text.MDQuizMoodle.Util.XMLRender
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
 

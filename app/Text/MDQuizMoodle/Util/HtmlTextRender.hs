@@ -1,6 +1,6 @@
 {-# Language OverloadedStrings #-}
 
-module Text.Util.HtmlTextRender where
+module Text.MDQuizMoodle.Util.HtmlTextRender where
 
 import Text.Pandoc.JSON
 import Data.Text (Text)

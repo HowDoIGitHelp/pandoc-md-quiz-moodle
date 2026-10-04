@@ -1,4 +1,4 @@
-module Text.Util.Helper where
+module Text.MDQuizMoodle.Util.Helper where
 
 import Text.Pandoc.JSON
 import Data.Text (unpack, Text)

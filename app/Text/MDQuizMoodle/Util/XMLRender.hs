@@ -1,6 +1,6 @@
 {-# Language OverloadedStrings #-}
 
-module Text.Util.XMLRender where
+module Text.MDQuizMoodle.Util.XMLRender where
 
 import Text.XML.Generator
 import Data.Text.Encoding (encodeUtf8Builder, decodeUtf8)

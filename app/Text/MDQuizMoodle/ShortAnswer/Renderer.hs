@@ -1,13 +1,12 @@
 {-# Language OverloadedStrings #-}
 
-module Text.ShortAnswer.Renderer where
+module Text.MDQuizMoodle.ShortAnswer.Renderer where
 
 import Text.XML.Generator
 import Data.Text (pack)
-import Text.ShortAnswer.Types
-import Text.ShortAnswer.Parser
-import Text.Util.XMLRender (toTextElemCDATA, toMoodleText)
-import Text.Util.Helper (padEnd)
+import Text.MDQuizMoodle.ShortAnswer.Types
+import Text.MDQuizMoodle.Util.XMLRender (toTextElemCDATA, toMoodleText)
+import Text.MDQuizMoodle.Util.Helper (padEnd)
 
 toMoodleShortAnswerFeedback :: ShortAnswerFeedback -> Xml Elem
 toMoodleShortAnswerFeedback (ShortAnswerFeedback score answer feedback)=

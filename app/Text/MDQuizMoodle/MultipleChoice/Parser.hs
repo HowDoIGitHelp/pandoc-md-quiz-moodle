@@ -1,13 +1,13 @@
 {-# Language OverloadedStrings #-}
 
-module Text.MultipleChoice.Parser where
+module Text.MDQuizMoodle.MultipleChoice.Parser where
 
 import Text.Pandoc.JSON
 import Data.Text (pack, Text, uncons, replace, words)
-import Text.Util.HtmlTextRender (toText)
-import Text.MultipleChoice.Types
+import Text.MDQuizMoodle.Util.HtmlTextRender (toText)
+import Text.MDQuizMoodle.MultipleChoice.Types
 import Data.Char (chr, isLower)
-import Text.Util.Helper
+import Text.MDQuizMoodle.Util.Helper
 import Prelude hiding (words)
 
 toChoices :: Block -> [Choice]

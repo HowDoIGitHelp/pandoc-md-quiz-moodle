@@ -3,13 +3,13 @@
 module Main where
 
 import Text.Pandoc.JSON
-import Text.MultipleChoice.Parser (toMultipleChoiceList, toMultipleChoiceAnswerKeyList)
-import Text.MultipleChoice.Renderer (toMoodleMultipleChoice)
-import Text.ShortAnswer.Parser (toShortAnswer, toShortAnswerKeyList)
-import Text.ShortAnswer.Renderer (toMoodleShortAnswer)
+import Text.MDQuizMoodle.MultipleChoice.Parser (toMultipleChoiceList, toMultipleChoiceAnswerKeyList)
+import Text.MDQuizMoodle.MultipleChoice.Renderer (toMoodleMultipleChoice)
+import Text.MDQuizMoodle.ShortAnswer.Parser (toShortAnswer, toShortAnswerKeyList)
+import Text.MDQuizMoodle.ShortAnswer.Renderer (toMoodleShortAnswer)
 import Data.Text.Encoding (decodeUtf8)
 import Text.XML.Generator (xrender, doc, xelem, defaultDocInfo, xelems)
-import Text.Util.Helper (isOrderedList)
+import Text.MDQuizMoodle.Util.Helper (isOrderedList)
 import Data.Text (replace)
 
 

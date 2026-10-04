@@ -1,4 +1,4 @@
-module Text.MultipleChoice.Types where
+module Text.MDQuizMoodle.MultipleChoice.Types where
 
 import Data.Text
 
