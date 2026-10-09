@@ -64,6 +64,10 @@ executable md-quiz-moodle
                       Text.MDQuizMoodle.ShortAnswer.Parser
                       Text.MDQuizMoodle.ShortAnswer.Renderer
                       Text.MDQuizMoodle.ShortAnswer.Types
+                      Text.MDQuizMoodle.Cloze.Parser
+                      Text.MDQuizMoodle.Cloze.Renderer
+                      Text.MDQuizMoodle.Cloze.Types
+                      Text.MDQuizMoodle.Cloze.HtmlTextRenderSafe
                       Text.MDQuizMoodle.Util.Helper
                       Text.MDQuizMoodle.Util.HtmlTextRender
                       Text.MDQuizMoodle.Util.XMLRender

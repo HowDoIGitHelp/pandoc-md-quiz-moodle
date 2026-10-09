@@ -7,6 +7,8 @@ import Text.MDQuizMoodle.MultipleChoice.Parser (toMultipleChoiceList, toMultiple
 import Text.MDQuizMoodle.MultipleChoice.Renderer (toMoodleMultipleChoice)
 import Text.MDQuizMoodle.ShortAnswer.Parser (toShortAnswer, toShortAnswerKeyList)
 import Text.MDQuizMoodle.ShortAnswer.Renderer (toMoodleShortAnswer)
+import Text.MDQuizMoodle.Cloze.Parser (toClozeList, toGeneralFeedbackList)
+import Text.MDQuizMoodle.Cloze.Renderer (toMoodleCloze)
 import Data.Text.Encoding (decodeUtf8)
 import Text.XML.Generator (xrender, doc, xelem, defaultDocInfo, xelems)
 import Text.MDQuizMoodle.Util.Helper (isOrderedList)
@@ -17,7 +19,7 @@ moodleXMLFilter :: Pandoc -> Pandoc
 moodleXMLFilter (Pandoc meta blocks) = Pandoc (Meta mempty) [Plain [Str flattenedXMLText]]
     where
         (olist1 : validRest) = case (break isOrderedList blocks) of
-            (_, []) -> error "missing questions list"
+            (_, []) -> error ("missing questions list" ++ (show blocks))
             (_, rest@(_:_)) -> rest
         olist2 = case (break isOrderedList validRest) of
             (_, []) -> error "cannot parse answer key"
@@ -25,9 +27,9 @@ moodleXMLFilter (Pandoc meta blocks) = Pandoc (Meta mempty) [Plain [Str flattene
             (_, (x:rest)) -> error "there is extra content at the end of the answer key"
         (OrderedList _ questionItems) = olist1
         (OrderedList _ answerItems) = olist2
-        questions = toMultipleChoiceList olist1
-        answerKeys = toMultipleChoiceAnswerKeyList olist2
-        moodleQuestions = zipWith3 toMoodleMultipleChoice [1..(length questions)] questions answerKeys
+        questions = toClozeList olist1
+        answerKeys = toGeneralFeedbackList olist2
+        moodleQuestions = zipWith3 toMoodleCloze [1..(length questions)] questions answerKeys
         renderedXML = xrender (doc defaultDocInfo (xelem "quiz" (xelems moodleQuestions)))
         flattenedXMLText = replace "\n>" ">" (decodeUtf8 renderedXML)
 

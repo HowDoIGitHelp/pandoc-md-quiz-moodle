@@ -20,11 +20,12 @@ import Data.ByteString as BS
     , ByteString
     , append
     , putStr )
-import Data.Aeson (Value)
-import Data.Aeson.KeyMap (singleton, union)
+import Data.Aeson (Value, Value(Object))
+import Data.Aeson.KeyMap (singleton, union, null)
 import Data.Aeson.Key (fromString)
 import Data.Frontmatter as FM
 import Data.Yaml (encode)
+import Prelude hiding (null)
 
 data Args = Args
     { questionsPath :: String
@@ -35,12 +36,12 @@ argParser = Args
     <$> strOption
         ( long "questions"
         <> short 'q'
-        <> metavar "DIR"
+        <> metavar "FILE"
         <> help "path to questions" )
     <*> strOption
         ( long "answers"
         <> short 'a'
-        <> metavar "DIR"
+        <> metavar "FILE"
         <> help "path to answers" )
 
 -- ast :: FilePath -> Pandoc
@@ -50,21 +51,31 @@ argParser = Args
 --     Pandoc meta blocks <- runIO (readMarkdown frontmatter md)
 --     return Pandoc meta blocks
 
+isEmpty :: Value -> Bool
+isEmpty (Object fm) = null fm
+isEmpty _ = False
+
+combinedFrontMatter :: Value -> Value -> BS.ByteString
+combinedFrontMatter fm1 fm2
+    | isEmpty fm1 && isEmpty fm2 = ""
+    | isEmpty fm1 = "---\n" <> (encode fm2) <> "---\n"
+    | isEmpty fm2 = "---\n" <> (encode fm1) <> "---\n"
+    | otherwise = "---\n" <> (encode combinedFM) <> "---\n"
+    where
+        combinedFM = union (singleton (fromString "questions") fm1) 
+            (singleton (fromString "answers") fm2)
+
 merge :: FilePath -> FilePath -> IO BS.ByteString
 merge file1 file2 = do
     contents1 <- BS.readFile file1
     contents2 <- BS.readFile file2
     let (front1, md1) = case FM.parseYamlFrontmatter contents1 of
             FM.Done md front -> (front :: Value, md)
-            _ -> error "could not parse questions markdown"
+            _ -> (Object mempty, contents1)
     let (front2, md2) = case FM.parseYamlFrontmatter contents2 of
             FM.Done md front -> (front :: Value, md)
-            _ -> error "could not parse answers markdown"
-    let wrapper1 = singleton (fromString "questions") front1
-    let wrapper2 = singleton (fromString "answers") front2
-    let unifiedYaml = union wrapper1 wrapper2
-    let unifiedFront = "---\n" <> (encode unifiedYaml) <> "---\n"
-    return (unifiedFront <> md1 <> "\n" <> md2)
+            _ -> (Object mempty, contents2)
+    return ((combinedFrontMatter front1 front2) <> md1 <> "\n" <> md2)
 
 main :: IO ()
 main = do
