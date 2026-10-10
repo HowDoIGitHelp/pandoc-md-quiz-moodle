@@ -14,7 +14,7 @@ toMoodleShortAnswerFeedback (ShortAnswerFeedback score answer feedback)=
         [ (xattr "fraction" ((pack . show) score))
         , (xattr "format" "html") ]
         <#> ( xelems
-            $ toTextElemCDATA answer
+            $ toMoodleText answer
             : ( xelem "feedback" $ xattr "format" "html"
                 <#> toTextElemCDATA feedback )
             : [] )

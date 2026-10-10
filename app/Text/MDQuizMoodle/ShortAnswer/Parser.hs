@@ -50,10 +50,16 @@ toShortAnswerKeyHelper answers rest =
             ShortAnswerKey (toText feedback) (toShortAnswerFeedback list)
         ([list@(BulletList items)], []) ->
             ShortAnswerKey "" (toShortAnswerFeedback list)
+        _ -> error $ "unsupported pattern" ++ (show $ break isBulletList rest)
 
 toShortAnswerKey :: [Block] -> ShortAnswerKey
-toShortAnswerKey [Plain ((Strong [Str answers]) : rest)] =
-    toShortAnswerKeyHelper answers [Plain rest]
+toShortAnswerKey [Plain ((Strong [Str answer]) : rest)] =
+    toShortAnswerKeyHelper answer [Plain rest]
+toShortAnswerKey ((Para [Strong inlines]) : rest) =
+    toShortAnswerKeyHelper (toText [Plain inlines]) rest
+toShortAnswerKey [] = error "empty answer key"
+toShortAnswerKey blocks =
+    error $ "unsupported pattern" ++ (show blocks)
 
 toShortAnswerKeyList :: Block -> [ShortAnswerKey]
 toShortAnswerKeyList (OrderedList _ items) =

@@ -5,7 +5,7 @@ module Main where
 import Text.Pandoc.JSON
 import Text.MDQuizMoodle.MultipleChoice.Parser (toMultipleChoiceList, toMultipleChoiceAnswerKeyList)
 import Text.MDQuizMoodle.MultipleChoice.Renderer (toMoodleMultipleChoice)
-import Text.MDQuizMoodle.ShortAnswer.Parser (toShortAnswer, toShortAnswerKeyList)
+import Text.MDQuizMoodle.ShortAnswer.Parser (toShortAnswerList, toShortAnswerKeyList)
 import Text.MDQuizMoodle.ShortAnswer.Renderer (toMoodleShortAnswer)
 import Text.MDQuizMoodle.Cloze.Parser (toClozeList, toGeneralFeedbackList)
 import Text.MDQuizMoodle.Cloze.Renderer (toMoodleCloze)
@@ -27,9 +27,9 @@ moodleXMLFilter (Pandoc meta blocks) = Pandoc (Meta mempty) [Plain [Str flattene
             (_, (x:rest)) -> error "there is extra content at the end of the answer key"
         (OrderedList _ questionItems) = olist1
         (OrderedList _ answerItems) = olist2
-        questions = toClozeList olist1
-        answerKeys = toGeneralFeedbackList olist2
-        moodleQuestions = zipWith3 toMoodleCloze [1..(length questions)] questions answerKeys
+        questions = toShortAnswerList olist1
+        answerKeys = toShortAnswerKeyList olist2
+        moodleQuestions = zipWith3 toMoodleShortAnswer [1..(length questions)] questions answerKeys
         renderedXML = xrender (doc defaultDocInfo (xelem "quiz" (xelems moodleQuestions)))
         flattenedXMLText = replace "\n>" ">" (decodeUtf8 renderedXML)
 
